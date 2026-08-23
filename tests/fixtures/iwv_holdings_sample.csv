@@ -1,0 +1,14 @@
+iShares Russell 3000 ETF
+Fund Holdings as of,"Aug 20, 2026"
+Inception Date,"May 22, 2000"
+Shares Outstanding,"80,100,000.00"
+Stock,-
+Bond,-
+Cash,-
+Other,-
+Ticker,Name,Sector,Asset Class,Market Value,Weight (%),Notional Value,Quantity,Price,Location,Exchange,Currency,FX Rate,Market Currency,Accrual Date
+AAPL,APPLE INC,Information Technology,Equity,100,1,100,1,100,United States,NASDAQ,USD,1,USD,-
+BRKB,BERKSHIRE HATHAWAY INC CLASS B,Financials,Equity,90,1,90,1,90,United States,NYSE,USD,1,USD,-
+HEIA,HEICO CLASS A,Industrials,Equity,80,1,80,1,80,United States,NYSE,USD,1,USD,-
+-,EXAMPLE INC CVR,Health Care,Equity,1,0.01,1,1,1,United States,-,USD,1,USD,-
+USD,USD CASH,Cash and/or Derivatives,Cash,10,0.1,10,10,1,United States,-,USD,1,USD,-

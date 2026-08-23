@@ -28,5 +28,43 @@ The core strategy rules and open decisions are documented in
 
 ## Status
 
-The project is currently at the strategy definition stage. No production-ready
-screener or verified backtest results are available yet.
+The data pipeline required before building the first screener is available:
+
+- local CSV and Yahoo Finance adapters;
+- shared OHLCV validation and chronological sorting;
+- multi-security data identified by `security_id` and `ticker`;
+- prior ATH and close breakout signal without using the current day's high;
+- an IWV holdings snapshot used as a current Russell 3000 proxy universe.
+
+Download the newest IWV holdings snapshot:
+
+```powershell
+$env:PYTHONPATH = "src"
+python scripts/download_iwv_universe.py
+```
+
+Run the small, tracked CSV example without contacting external services:
+
+```powershell
+$env:PYTHONPATH = "src"
+python scripts/detect_breakouts_csv.py
+```
+
+Refresh the weekly universe snapshot and incrementally update all current
+securities:
+
+```powershell
+$env:PYTHONPATH = "src"
+python scripts/update_market_data.py
+```
+
+The updater stores one raw Parquet file and one processed Parquet file per
+security. Existing securities receive a short overlapping Yahoo download,
+duplicate sessions are replaced, and the complete validated history is
+processed again. Price files for securities that leave the current universe
+are retained but are not updated or screened.
+
+The next development stage is the screener and candidate ranking. The IWV
+snapshot contains current ETF holdings, not historical point-in-time Russell
+3000 membership, so it must not be used to claim a survivorship-bias-free
+historical backtest.

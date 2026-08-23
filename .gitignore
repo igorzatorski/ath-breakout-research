@@ -32,6 +32,11 @@ data/raw/*
 !data/raw/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
+data/cache/*
+data/universe/*
+!data/universe/.gitkeep
+data/state/*
+!data/state/.gitkeep
 
 # Runtime output
 logs/
