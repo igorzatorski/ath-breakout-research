@@ -40,32 +40,33 @@ The data pipeline required before building the first screener is available:
 - prior ATH and close breakout signal without using the current day's high;
 - an IWV holdings snapshot used as a current Russell 3000 proxy universe.
 
-Download the newest IWV holdings snapshot:
+Install the project and its development tools once inside the active
+environment:
 
 ```powershell
-$env:PYTHONPATH = "src"
-python scripts/download_iwv_universe.py
+python -m pip install -e ".[dev]"
 ```
 
-Run the small, tracked CSV example without contacting external services:
+The daily data workflow has one entry point. It saves or reuses today's IWV
+snapshot, updates every known security through the latest available session,
+rebuilds processed features, and writes the quality report:
 
 ```powershell
-$env:PYTHONPATH = "src"
-python scripts/process_market_data_csv.py
+python scripts/run_data_pipeline.py
 ```
 
-Refresh the weekly universe snapshot and incrementally update all current
-securities:
+Maintenance command: rebuild every processed file from the locally stored raw
+Parquet files without downloading market data:
 
 ```powershell
-$env:PYTHONPATH = "src"
-python scripts/update_market_data.py
+python scripts/maintenance/rebuild_processed_data.py
 ```
 
-Rebuild processed features from local raw Parquet without downloading prices:
+Example command: process the small tracked CSV without contacting external
+services:
 
 ```powershell
-python scripts/rebuild_processed_data.py
+python examples/process_local_csv.py
 ```
 
 The updater stores one raw Parquet file and one processed Parquet file per
@@ -87,6 +88,13 @@ corporate-action values from the legacy schema cannot survive the migration.
 Every completed update writes `data/state/data_quality_report.csv`. It records
 freshness, missing NYSE sessions, history bounds, corporate-action counts, and
 update failures for each attempted security.
+
+Download failures are remembered between runs. A failed ticker is retried
+individually immediately, then on the next daily run. After three consecutive
+failed runs it moves to a weekly retry schedule instead of repeatedly querying
+Yahoo every day. A later successful download automatically returns it to the
+active state and clears its failure counter. The manifest and quality report
+show the error category, failure count, last failure date, and next retry date.
 
 The next development stage is the screener and candidate ranking. The IWV
 snapshot contains current ETF holdings, not historical point-in-time Russell

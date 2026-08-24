@@ -16,7 +16,6 @@ def main() -> None:
 
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     result.to_csv(OUTPUT_FILE, index=False)
-
     print(f"Saved {len(result)} rows to {OUTPUT_FILE}")
 
 

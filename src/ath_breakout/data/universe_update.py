@@ -10,13 +10,13 @@ from ath_breakout.data.adapters.ishares import download_iwv_universe
 from ath_breakout.data.universe import find_latest_iwv_snapshot, load_universe_csv
 
 
-def ensure_weekly_iwv_snapshot(
+def ensure_daily_iwv_snapshot(
     directory: str | Path,
     today: date | None = None,
-    maximum_age_days: int = 7,
+    maximum_age_days: int = 1,
     download_function: Callable[[], pd.DataFrame] | None = None,
 ) -> Path:
-    """Reuse a recent IWV snapshot or download and save a new one."""
+    """Reuse today's IWV snapshot or download and save a new one."""
     directory_path = Path(directory)
     current_date = today or date.today()
 

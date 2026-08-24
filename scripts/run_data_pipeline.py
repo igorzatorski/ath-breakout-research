@@ -1,4 +1,4 @@
-"""Refresh the current universe and incrementally update all market data."""
+"""Run the complete daily IWV and market-data pipeline."""
 
 from datetime import datetime
 from pathlib import Path
@@ -8,7 +8,7 @@ from ath_breakout.data.quality import build_data_quality_report
 from ath_breakout.data.quality import save_data_quality_report
 from ath_breakout.data.security_registry import update_security_registry
 from ath_breakout.data.universe import load_universe_csv
-from ath_breakout.data.universe_update import ensure_weekly_iwv_snapshot
+from ath_breakout.data.universe_update import ensure_daily_iwv_snapshot
 
 
 UNIVERSE_DIRECTORY = Path("data/universe")
@@ -21,9 +21,9 @@ QUALITY_REPORT_FILE = Path("data/state/data_quality_report.csv")
 
 def main() -> None:
     started_at = datetime.now()
-    print(f"[{started_at:%Y-%m-%d %H:%M:%S}] Starting market-data update")
+    print(f"[{started_at:%Y-%m-%d %H:%M:%S}] Starting complete data pipeline")
 
-    universe_file = ensure_weekly_iwv_snapshot(UNIVERSE_DIRECTORY)
+    universe_file = ensure_daily_iwv_snapshot(UNIVERSE_DIRECTORY)
     print(
         f"[{datetime.now():%Y-%m-%d %H:%M:%S}] "
         f"Using universe: {universe_file}"
@@ -47,6 +47,7 @@ def main() -> None:
 
     successful = (manifest["status"] == "success").sum()
     failed = (manifest["status"] == "failed").sum()
+    deferred = (manifest["status"] == "retry_deferred").sum()
 
     print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Building quality report")
     quality_report = build_data_quality_report(
@@ -55,16 +56,33 @@ def main() -> None:
         today=datetime.now().date(),
     )
     save_data_quality_report(quality_report, QUALITY_REPORT_FILE)
-    quality_counts = quality_report["quality_status"].value_counts()
 
+    quality_counts = quality_report["quality_status"].value_counts()
     for quality_status, count in quality_counts.items():
         print(f"  {quality_status}: {count}")
 
     elapsed = datetime.now() - started_at
     print(
         f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Finished: "
-        f"{successful} successful, {failed} failed | elapsed: {elapsed}"
+        f"{successful} successful, {failed} failed, "
+        f"{deferred} waiting for retry | elapsed: {elapsed}"
     )
+
+    if failed > 0:
+        failed_tickers = manifest.loc[
+            manifest["status"] == "failed",
+            "ticker",
+        ].tolist()
+        print(f"Failed tickers: {', '.join(failed_tickers)}")
+        print(f"Details: {MANIFEST_FILE}")
+        print("Existing files were preserved; the next run will retry them.")
+
+    if deferred > 0:
+        print(
+            "Deferred tickers reached their retry limit and will be tried "
+            "again on their scheduled dates."
+        )
+
     print(f"Quality report: {QUALITY_REPORT_FILE}")
 
 

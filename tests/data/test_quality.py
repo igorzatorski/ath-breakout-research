@@ -101,6 +101,37 @@ def test_reports_stale_data_and_failed_update(tmp_path) -> None:
     assert report.loc[0, "stale_sessions"] == 2
 
 
+def test_reports_a_scheduled_retry_separately(tmp_path) -> None:
+    processed_directory = tmp_path / "processed"
+    data = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2024-12-03"]),
+            "dividends": [0.0],
+            "stock_splits": [0.0],
+            "repaired": [False],
+        }
+    )
+    save_security_data(data, processed_directory / "WAIT.parquet")
+    manifest = pd.DataFrame(
+        {
+            "security_id": ["WAIT"],
+            "ticker": ["WAIT"],
+            "status": ["retry_deferred"],
+            "error": ["ValueError: Yahoo returned no valid data"],
+        }
+    )
+
+    report = build_data_quality_report(
+        manifest,
+        processed_directory,
+        today=date(2024, 12, 4),
+    )
+
+    assert report.loc[0, "quality_status"] == "retry_deferred"
+    assert "failure_count" in report.columns
+    assert "next_retry_date" in report.columns
+
+
 def test_saves_quality_report_without_leaving_temporary_file(tmp_path) -> None:
     output_file = tmp_path / "quality.csv"
     report = pd.DataFrame({"security_id": ["AAPL"], "status": ["good"]})

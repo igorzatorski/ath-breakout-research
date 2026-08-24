@@ -33,10 +33,7 @@ def main() -> None:
             successful += 1
         except Exception as error:
             failed += 1
-            print(
-                f"  failed {raw_file.stem}: "
-                f"{type(error).__name__}: {error}"
-            )
+            print(f"  failed {raw_file.stem}: {type(error).__name__}: {error}")
 
         if file_number % 50 == 0 or file_number == len(raw_files):
             percentage = 100 * file_number / len(raw_files)
@@ -49,8 +46,8 @@ def main() -> None:
 
     elapsed = datetime.now() - started_at
     print(
-        f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Finished: "
-        f"{successful} successful, {failed} failed | elapsed: {elapsed}"
+        f"[{datetime.now():%Y-%m-%d %H:%M:%S}] "
+        f"Finished: {successful} successful, {failed} failed | elapsed: {elapsed}"
     )
 
 

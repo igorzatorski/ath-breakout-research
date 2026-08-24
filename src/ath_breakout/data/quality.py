@@ -73,6 +73,11 @@ def build_data_quality_report(
                 manifest_row.get("in_current_universe", True)
             ),
             "update_status": manifest_row["status"],
+            "download_state": manifest_row.get("download_state", "active"),
+            "failure_count": manifest_row.get("failure_count", 0),
+            "last_failure_date": manifest_row.get("last_failure_date"),
+            "next_retry_date": manifest_row.get("next_retry_date"),
+            "error_type": manifest_row.get("error_type"),
             "quality_status": "no_data",
             "first_date": None,
             "last_date": None,
@@ -113,7 +118,9 @@ def build_data_quality_report(
             ]
         )
 
-        if manifest_row["status"] != "success":
+        if manifest_row["status"] == "retry_deferred":
+            quality_status = "retry_deferred"
+        elif manifest_row["status"] != "success":
             quality_status = "update_failed"
         elif last_date > expected_latest:
             quality_status = "future_date"

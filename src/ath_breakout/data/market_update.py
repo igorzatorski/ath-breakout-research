@@ -8,6 +8,14 @@ import pandas as pd
 from ath_breakout.data.adapters.yfinance import download_yfinance_ohlcv
 from ath_breakout.data.preparation import prepare_ohlcv_data
 from ath_breakout.data.processing import process_market_data
+from ath_breakout.data.retry_policy import (
+    classify_download_error,
+    failed_retry_state,
+    load_previous_manifest,
+    previous_row_for_security,
+    retry_is_due,
+    successful_retry_state,
+)
 from ath_breakout.data.storage import (
     load_security_data,
     save_security_data,
@@ -33,9 +41,14 @@ def print_update_progress(
 ) -> None:
     """Print one timestamped progress line for the market-data update."""
     bar_width = 30
-    completed_width = int(bar_width * completed_batches / total_batches)
+    if total_batches == 0:
+        completed_width = bar_width
+        percentage = 100.0
+    else:
+        completed_width = int(bar_width * completed_batches / total_batches)
+        percentage = 100 * completed_batches / total_batches
+
     progress_bar = "#" * completed_width + "-" * (bar_width - completed_width)
-    percentage = 100 * completed_batches / total_batches
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     print(
@@ -124,13 +137,30 @@ def update_market_data(
     processed_directory_path = Path(processed_directory)
     manifest_path = Path(manifest_file)
     manifest_rows = []
+    previous_manifest = load_previous_manifest(manifest_path)
 
     download_groups = {}
 
     for _, security in universe.iterrows():
+        security_id = security["security_id"]
+        previous_row = previous_row_for_security(
+            previous_manifest,
+            security_id,
+        )
+
+        if not retry_is_due(previous_row, current_date):
+            deferred_row = previous_row.to_dict()
+            deferred_row["ticker"] = security["ticker"]
+            deferred_row["in_current_universe"] = bool(
+                security.get("in_current_universe", True)
+            )
+            deferred_row["status"] = "retry_deferred"
+            manifest_rows.append(deferred_row)
+            continue
+
         raw_file = security_file_path(
             raw_directory_path,
-            security["security_id"],
+            security_id,
         )
         start_date = download_start_for_security(raw_file)
         download_groups.setdefault(start_date, []).append(security)
@@ -161,6 +191,10 @@ def update_market_data(
             for security in security_batch:
                 security_id = security["security_id"]
                 ticker = security["ticker"]
+                previous_row = previous_row_for_security(
+                    previous_manifest,
+                    security_id,
+                )
                 raw_file = security_file_path(raw_directory_path, security_id)
                 processed_file = security_file_path(
                     processed_directory_path,
@@ -194,8 +228,7 @@ def update_market_data(
                     save_security_data(complete_history, raw_file)
                     save_security_data(processed_history, processed_file)
 
-                    manifest_rows.append(
-                        {
+                    manifest_row = {
                             "security_id": security_id,
                             "ticker": ticker,
                             "in_current_universe": bool(
@@ -214,11 +247,15 @@ def update_market_data(
                                 complete_history["repaired"].sum()
                             ),
                             "error": None,
-                        }
-                    )
+                    }
+                    manifest_row.update(successful_retry_state())
+                    manifest_rows.append(manifest_row)
                 except Exception as error:
-                    manifest_rows.append(
-                        {
+                    error_type = classify_download_error(
+                        error,
+                        raw_file.exists(),
+                    )
+                    manifest_row = {
                             "security_id": security_id,
                             "ticker": ticker,
                             "in_current_universe": bool(
@@ -231,8 +268,15 @@ def update_market_data(
                             "split_events": None,
                             "repaired_rows": None,
                             "error": f"{type(error).__name__}: {error}",
-                        }
+                    }
+                    manifest_row.update(
+                        failed_retry_state(
+                            previous_row,
+                            current_date,
+                            error_type,
+                        )
                     )
+                    manifest_rows.append(manifest_row)
 
             manifest = pd.DataFrame(manifest_rows)
             manifest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -249,5 +293,13 @@ def update_market_data(
                 int(successful_count),
                 int(failed_count),
             )
+
+    if total_batches == 0:
+        manifest = pd.DataFrame(manifest_rows)
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_manifest_path = manifest_path.with_suffix(".tmp.csv")
+        manifest.to_csv(temporary_manifest_path, index=False)
+        temporary_manifest_path.replace(manifest_path)
+        print_update_progress(0, 0, successful=0, failed=0)
 
     return pd.DataFrame(manifest_rows)

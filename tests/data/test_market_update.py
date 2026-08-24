@@ -322,3 +322,68 @@ def test_invalid_security_does_not_stop_other_securities(
         manifest["ticker"] == "BROKEN",
         "error",
     ].iloc[0]
+
+
+def test_failed_security_is_deferred_and_recovers_on_retry_date(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    universe = pd.DataFrame(
+        {"security_id": ["AAPL"], "ticker": ["AAPL"]}
+    )
+    manifest_file = tmp_path / "manifest.csv"
+    download_calls = []
+
+    def failed_download(**kwargs):
+        download_calls.append(kwargs)
+        return pd.DataFrame(columns=["ticker"]), ["AAPL"]
+
+    monkeypatch.setattr(
+        "ath_breakout.data.market_update.download_yfinance_ohlcv",
+        failed_download,
+    )
+
+    first_result = update_market_data(
+        universe=universe,
+        raw_directory=tmp_path / "raw",
+        processed_directory=tmp_path / "processed",
+        manifest_file=manifest_file,
+        today=date(2026, 8, 24),
+        batch_size=1,
+    )
+    deferred_result = update_market_data(
+        universe=universe,
+        raw_directory=tmp_path / "raw",
+        processed_directory=tmp_path / "processed",
+        manifest_file=manifest_file,
+        today=date(2026, 8, 24),
+        batch_size=1,
+    )
+
+    assert first_result.loc[0, "failure_count"] == 1
+    assert deferred_result.loc[0, "status"] == "retry_deferred"
+    assert len(download_calls) == 1
+
+    def successful_download(**kwargs):
+        download_calls.append(kwargs)
+        return make_prices(["2026-08-24"], [100.0]), []
+
+    monkeypatch.setattr(
+        "ath_breakout.data.market_update.download_yfinance_ohlcv",
+        successful_download,
+    )
+
+    recovered_result = update_market_data(
+        universe=universe,
+        raw_directory=tmp_path / "raw",
+        processed_directory=tmp_path / "processed",
+        manifest_file=manifest_file,
+        today=date(2026, 8, 25),
+        batch_size=1,
+    )
+
+    assert recovered_result.loc[0, "status"] == "success"
+    assert recovered_result.loc[0, "download_state"] == "active"
+    assert recovered_result.loc[0, "failure_count"] == 0
+    assert pd.isna(recovered_result.loc[0, "next_retry_date"])
+    assert len(download_calls) == 2

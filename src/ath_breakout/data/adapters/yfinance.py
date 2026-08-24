@@ -121,6 +121,40 @@ def download_yfinance_ohlcv(
 
             successful_tables.append(prepared_ticker_data)
 
+    # Batch requests occasionally fail for otherwise valid Yahoo tickers.
+    # Retry every failed ticker once on its own before reporting failure.
+    retry_tickers = sorted(set(failed_tickers))
+    failed_tickers = []
+
+    for ticker in retry_tickers:
+        try:
+            raw_retry = yf.download(
+                tickers=[ticker],
+                start=start_date,
+                end=end_date,
+                interval="1d",
+                group_by="ticker",
+                auto_adjust=False,
+                actions=True,
+                repair=True,
+                threads=False,
+                progress=False,
+                multi_level_index=True,
+            )
+            normalized_retry, retry_failures = normalize_yfinance_download(
+                raw_retry,
+                [ticker],
+            )
+        except Exception:
+            failed_tickers.append(ticker)
+            continue
+
+        if ticker in retry_failures or len(normalized_retry) == 0:
+            failed_tickers.append(ticker)
+            continue
+
+        successful_tables.append(normalized_retry)
+
     if len(successful_tables) == 0:
         empty_data = pd.DataFrame(columns=CANONICAL_COLUMNS)
         return empty_data, sorted(set(failed_tickers))

@@ -126,3 +126,34 @@ def test_rejects_non_positive_batch_size() -> None:
             end_date="2024-02-01",
             batch_size=0,
         )
+
+
+def test_retries_failed_batch_ticker_individually(tmp_path, monkeypatch) -> None:
+    dates = pd.to_datetime(["2024-01-02"])
+    columns = pd.MultiIndex.from_product(
+        [["AAPL"], ["Open", "High", "Low", "Close", "Adj Close", "Volume"]]
+    )
+    invalid_download = pd.DataFrame(
+        [[100, 103, 99, 102, None, 1200000]],
+        index=dates,
+        columns=columns,
+    )
+    invalid_download.index.name = "Date"
+    valid_download = invalid_download.copy()
+    valid_download[("AAPL", "Adj Close")] = 102
+    downloads = iter([invalid_download, valid_download])
+
+    monkeypatch.setattr(
+        "ath_breakout.data.adapters.yfinance.yf.download",
+        lambda **kwargs: next(downloads),
+    )
+
+    result, failed_tickers = download_yfinance_ohlcv(
+        tickers=["AAPL"],
+        start_date="2024-01-01",
+        end_date="2024-01-03",
+        cache_directory=tmp_path / "cache",
+    )
+
+    assert failed_tickers == []
+    assert result["ticker"].tolist() == ["AAPL"]
