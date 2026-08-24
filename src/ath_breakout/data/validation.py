@@ -15,6 +15,7 @@ REQUIRED_OHLCV_COLUMNS = (
 )
 NUMERIC_OHLCV_COLUMNS = ("open", "high", "low", "close", "volume")
 PRICE_COLUMNS = ("open", "high", "low", "close")
+CORPORATE_ACTION_COLUMNS = ("adj_close", "dividends", "stock_splits")
 
 
 def validate_required_columns(data: pd.DataFrame) -> None:
@@ -126,3 +127,22 @@ def validate_low_prices(data: pd.DataFrame) -> None:
 
     if number_of_low_above_high > 0:
         raise ValueError("Low price is higher than high price")
+
+
+def validate_corporate_actions(data: pd.DataFrame) -> None:
+    """Raise an error when normalized corporate-action data is invalid."""
+    for column in CORPORATE_ACTION_COLUMNS:
+        if data[column].isna().sum() > 0:
+            raise ValueError(f"Missing values found in column: {column}")
+
+        if pd.api.types.is_numeric_dtype(data[column]) == False:
+            raise ValueError(f"Non-numeric values found in column: {column}")
+
+    if (data["adj_close"] <= 0).sum() > 0:
+        raise ValueError("Non-positive adjusted close found")
+
+    if (data["dividends"] < 0).sum() > 0:
+        raise ValueError("Negative dividend found")
+
+    if (data["stock_splits"] < 0).sum() > 0:
+        raise ValueError("Negative stock split ratio found")

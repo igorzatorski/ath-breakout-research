@@ -9,7 +9,13 @@ from ath_breakout.data.preparation import prepare_ohlcv_data
 from ath_breakout.data.validation import REQUIRED_OHLCV_COLUMNS
 
 
-CANONICAL_COLUMNS = list(REQUIRED_OHLCV_COLUMNS)
+CANONICAL_COLUMNS = list(REQUIRED_OHLCV_COLUMNS) + [
+    "adj_close",
+    "dividends",
+    "stock_splits",
+    "repaired",
+    "prices_split_adjusted",
+]
 
 
 def normalize_yfinance_download(
@@ -33,9 +39,20 @@ def normalize_yfinance_download(
             continue
 
         ticker_data = ticker_data.reset_index()
-        ticker_data.columns = [str(column).lower() for column in ticker_data.columns]
+        ticker_data.columns = [
+            str(column).lower().replace(" ", "_").replace("?", "")
+            for column in ticker_data.columns
+        ]
         ticker_data["security_id"] = ticker
         ticker_data["ticker"] = ticker
+        ticker_data["prices_split_adjusted"] = True
+
+        try:
+            ticker_data = prepare_ohlcv_data(ticker_data)
+        except (KeyError, TypeError, ValueError):
+            failed_tickers.append(ticker)
+            continue
+
         ticker_data = ticker_data[CANONICAL_COLUMNS]
         normalized_tables.append(ticker_data)
 
@@ -75,7 +92,8 @@ def download_yfinance_ohlcv(
                 interval="1d",
                 group_by="ticker",
                 auto_adjust=False,
-                actions=False,
+                actions=True,
+                repair=True,
                 threads=True,
                 progress=False,
                 multi_level_index=True,

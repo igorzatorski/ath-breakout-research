@@ -32,6 +32,10 @@ The data pipeline required before building the first screener is available:
 
 - local CSV and Yahoo Finance adapters;
 - shared OHLCV validation and chronological sorting;
+- raw adjusted-close, dividend, split, and Yahoo repair information;
+- split-adjusted strategy prices kept separate from dividend-adjusted returns;
+- SMA50, SMA100, and SMA150 calculated from split-adjusted closes;
+- NYSE-calendar freshness and missing-session quality checks;
 - multi-security data identified by `security_id` and `ticker`;
 - prior ATH and close breakout signal without using the current day's high;
 - an IWV holdings snapshot used as a current Russell 3000 proxy universe.
@@ -47,7 +51,7 @@ Run the small, tracked CSV example without contacting external services:
 
 ```powershell
 $env:PYTHONPATH = "src"
-python scripts/detect_breakouts_csv.py
+python scripts/process_market_data_csv.py
 ```
 
 Refresh the weekly universe snapshot and incrementally update all current
@@ -58,12 +62,31 @@ $env:PYTHONPATH = "src"
 python scripts/update_market_data.py
 ```
 
+Rebuild processed features from local raw Parquet without downloading prices:
+
+```powershell
+python scripts/rebuild_processed_data.py
+```
+
 The updater stores one raw Parquet file and one processed Parquet file per
 security. Existing securities receive a short overlapping Yahoo download,
 duplicate sessions are replaced, and the complete validated history is
 processed again. Securities that leave the current universe remain in the
 security registry and their prices continue to update, but they are marked as
 outside the current universe and will not be used by the current screener.
+
+Yahoo historical OHLC is already adjusted for stock splits but not cash
+dividends. The pipeline records that source convention explicitly, preserves
+`adj_close`, dividends, and split events in raw Parquet, and calculates ATH
+from `split_adj_high` and `split_adj_close`. Dividend-adjusted prices are not
+used to generate the price-breakout signal. Existing raw files created with
+the older schema request a full-history refresh on their next update. A
+successful full refresh replaces the old Parquet completely, so placeholder
+corporate-action values from the legacy schema cannot survive the migration.
+
+Every completed update writes `data/state/data_quality_report.csv`. It records
+freshness, missing NYSE sessions, history bounds, corporate-action counts, and
+update failures for each attempted security.
 
 The next development stage is the screener and candidate ranking. The IWV
 snapshot contains current ETF holdings, not historical point-in-time Russell

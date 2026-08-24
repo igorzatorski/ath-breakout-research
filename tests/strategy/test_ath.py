@@ -7,7 +7,7 @@ def test_adds_prior_ath_without_look_ahead() -> None:
     data = pd.DataFrame(
         {
             "security_id": ["AAPL", "AAPL", "AAPL", "AAPL"],
-            "high": [100, 105, 103, 110],
+            "split_adj_high": [100, 105, 103, 110],
         }
     )
 
@@ -21,7 +21,7 @@ def test_does_not_change_original_data() -> None:
     data = pd.DataFrame(
         {
             "security_id": ["AAPL", "AAPL", "AAPL", "AAPL"],
-            "high": [100, 105, 103, 110],
+            "split_adj_high": [100, 105, 103, 110],
         }
     )
 
@@ -34,7 +34,7 @@ def test_calculates_prior_ath_separately_for_each_security() -> None:
     data = pd.DataFrame(
         {
             "security_id": ["AAPL", "MSFT", "AAPL", "MSFT", "AAPL", "MSFT"],
-            "high": [100, 200, 105, 190, 103, 210],
+            "split_adj_high": [100, 200, 105, 190, 103, 210],
         }
     )
 
@@ -50,7 +50,7 @@ def test_calculates_prior_ath_separately_for_each_security() -> None:
 def test_adds_breakout_signal() -> None:
     data = pd.DataFrame(
         {
-            "close": [99, 101, 105, 106],
+            "split_adj_close": [99, 101, 105, 106],
             "prior_ath": [None, 100, 105, 105],
         }
     )
@@ -63,7 +63,7 @@ def test_adds_breakout_signal() -> None:
 def test_breakout_signal_does_not_change_original_data() -> None:
     data = pd.DataFrame(
         {
-            "close": [99, 101],
+            "split_adj_close": [99, 101],
             "prior_ath": [None, 100],
         }
     )

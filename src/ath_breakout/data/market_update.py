@@ -1,22 +1,60 @@
 """Incrementally update market data for every known security."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
 
 from ath_breakout.data.adapters.yfinance import download_yfinance_ohlcv
 from ath_breakout.data.preparation import prepare_ohlcv_data
+from ath_breakout.data.processing import process_market_data
 from ath_breakout.data.storage import (
     load_security_data,
     save_security_data,
     security_file_path,
 )
 from ath_breakout.data.universe import validate_universe
-from ath_breakout.strategy.ath import add_breakout_signal, add_prior_ath
 
 
 FULL_HISTORY_START = "1900-01-01"
+CORPORATE_ACTION_COLUMNS = {
+    "adj_close",
+    "dividends",
+    "stock_splits",
+    "repaired",
+}
+
+
+def print_update_progress(
+    completed_batches: int,
+    total_batches: int,
+    successful: int,
+    failed: int,
+) -> None:
+    """Print one timestamped progress line for the market-data update."""
+    bar_width = 30
+    completed_width = int(bar_width * completed_batches / total_batches)
+    progress_bar = "#" * completed_width + "-" * (bar_width - completed_width)
+    percentage = 100 * completed_batches / total_batches
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    print(
+        f"[{timestamp}] [{progress_bar}] {percentage:6.2f}% "
+        f"batch {completed_batches}/{total_batches} | "
+        f"success: {successful} | failed: {failed}",
+        flush=True,
+    )
+
+
+def requires_full_schema_refresh(raw_file: str | Path) -> bool:
+    """Return True when an existing file lacks corporate-action history."""
+    file_path = Path(raw_file)
+
+    if not file_path.exists():
+        return False
+
+    existing_data = load_security_data(file_path)
+    return CORPORATE_ACTION_COLUMNS.issubset(existing_data.columns) == False
 
 
 def download_start_for_security(
@@ -27,6 +65,9 @@ def download_start_for_security(
     file_path = Path(raw_file)
 
     if not file_path.exists():
+        return FULL_HISTORY_START
+
+    if requires_full_schema_refresh(file_path):
         return FULL_HISTORY_START
 
     existing_data = load_security_data(file_path)
@@ -46,8 +87,10 @@ def merge_security_history(
     if len(downloaded_data) == 0:
         return prepare_ohlcv_data(existing_data)
 
+    prepared_existing_data = prepare_ohlcv_data(existing_data)
+    prepared_downloaded_data = prepare_ohlcv_data(downloaded_data)
     combined_data = pd.concat(
-        [existing_data, downloaded_data],
+        [prepared_existing_data, prepared_downloaded_data],
         ignore_index=True,
     )
     combined_data = combined_data.drop_duplicates(
@@ -55,12 +98,6 @@ def merge_security_history(
         keep="last",
     )
     return prepare_ohlcv_data(combined_data)
-
-
-def process_security_history(raw_data: pd.DataFrame) -> pd.DataFrame:
-    """Recalculate all currently available strategy columns."""
-    data_with_ath = add_prior_ath(raw_data)
-    return add_breakout_signal(data_with_ath)
 
 
 def update_market_data(
@@ -98,16 +135,28 @@ def update_market_data(
         start_date = download_start_for_security(raw_file)
         download_groups.setdefault(start_date, []).append(security)
 
+    total_batches = sum(
+        (len(securities) + batch_size - 1) // batch_size
+        for securities in download_groups.values()
+    )
+    completed_batches = 0
+
+    print_update_progress(0, total_batches, successful=0, failed=0)
+
     for start_date, securities in download_groups.items():
         for batch_start in range(0, len(securities), batch_size):
             security_batch = securities[batch_start : batch_start + batch_size]
             tickers = [security["ticker"] for security in security_batch]
-            downloaded_batch, failed_tickers = download_yfinance_ohlcv(
-                tickers=tickers,
-                start_date=start_date,
-                end_date=end_date,
-                batch_size=batch_size,
-            )
+            try:
+                downloaded_batch, failed_tickers = download_yfinance_ohlcv(
+                    tickers=tickers,
+                    start_date=start_date,
+                    end_date=end_date,
+                    batch_size=batch_size,
+                )
+            except Exception:
+                downloaded_batch = pd.DataFrame(columns=["ticker"])
+                failed_tickers = tickers
 
             for security in security_batch:
                 security_id = security["security_id"]
@@ -117,11 +166,57 @@ def update_market_data(
                     processed_directory_path,
                     security_id,
                 )
-                ticker_download = downloaded_batch[
-                    downloaded_batch["ticker"] == ticker
-                ].copy()
+                try:
+                    ticker_download = downloaded_batch[
+                        downloaded_batch["ticker"] == ticker
+                    ].copy()
 
-                if ticker in failed_tickers or len(ticker_download) == 0:
+                    if ticker in failed_tickers or len(ticker_download) == 0:
+                        raise ValueError("Yahoo returned no valid data")
+
+                    ticker_download["security_id"] = security_id
+
+                    replace_old_schema = requires_full_schema_refresh(raw_file)
+
+                    if raw_file.exists() and replace_old_schema == False:
+                        existing_data = load_security_data(raw_file)
+                    else:
+                        existing_data = pd.DataFrame(
+                            columns=ticker_download.columns
+                        )
+
+                    complete_history = merge_security_history(
+                        existing_data,
+                        ticker_download,
+                    )
+                    processed_history = process_market_data(complete_history)
+
+                    save_security_data(complete_history, raw_file)
+                    save_security_data(processed_history, processed_file)
+
+                    manifest_rows.append(
+                        {
+                            "security_id": security_id,
+                            "ticker": ticker,
+                            "in_current_universe": bool(
+                                security.get("in_current_universe", True)
+                            ),
+                            "status": "success",
+                            "last_date": complete_history["date"].max().date(),
+                            "updated_at": current_date,
+                            "dividend_events": int(
+                                (complete_history["dividends"] > 0).sum()
+                            ),
+                            "split_events": int(
+                                (complete_history["stock_splits"] > 0).sum()
+                            ),
+                            "repaired_rows": int(
+                                complete_history["repaired"].sum()
+                            ),
+                            "error": None,
+                        }
+                    )
+                except Exception as error:
                     manifest_rows.append(
                         {
                             "security_id": security_id,
@@ -132,45 +227,27 @@ def update_market_data(
                             "status": "failed",
                             "last_date": None,
                             "updated_at": current_date,
-                            "error": "download or validation failed",
+                            "dividend_events": None,
+                            "split_events": None,
+                            "repaired_rows": None,
+                            "error": f"{type(error).__name__}: {error}",
                         }
                     )
-                    continue
-
-                ticker_download["security_id"] = security_id
-
-                if raw_file.exists():
-                    existing_data = load_security_data(raw_file)
-                else:
-                    existing_data = pd.DataFrame(columns=ticker_download.columns)
-
-                complete_history = merge_security_history(
-                    existing_data,
-                    ticker_download,
-                )
-                processed_history = process_security_history(complete_history)
-
-                save_security_data(complete_history, raw_file)
-                save_security_data(processed_history, processed_file)
-
-                manifest_rows.append(
-                    {
-                        "security_id": security_id,
-                        "ticker": ticker,
-                        "in_current_universe": bool(
-                            security.get("in_current_universe", True)
-                        ),
-                        "status": "success",
-                        "last_date": complete_history["date"].max().date(),
-                        "updated_at": current_date,
-                        "error": None,
-                    }
-                )
 
             manifest = pd.DataFrame(manifest_rows)
             manifest_path.parent.mkdir(parents=True, exist_ok=True)
             temporary_manifest_path = manifest_path.with_suffix(".tmp.csv")
             manifest.to_csv(temporary_manifest_path, index=False)
             temporary_manifest_path.replace(manifest_path)
+
+            completed_batches += 1
+            successful_count = (manifest["status"] == "success").sum()
+            failed_count = (manifest["status"] == "failed").sum()
+            print_update_progress(
+                completed_batches,
+                total_batches,
+                int(successful_count),
+                int(failed_count),
+            )
 
     return pd.DataFrame(manifest_rows)

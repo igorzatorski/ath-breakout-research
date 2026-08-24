@@ -9,6 +9,7 @@ from ath_breakout.data.validation import validate_positive_prices
 from ath_breakout.data.validation import validate_non_negative_volume
 from ath_breakout.data.validation import validate_high_prices
 from ath_breakout.data.validation import validate_low_prices
+from ath_breakout.data.validation import validate_corporate_actions
 
 
 def test_accepts_all_required_columns() -> None:
@@ -237,3 +238,41 @@ def test_rejects_low_above_high() -> None:
 
     with pytest.raises(ValueError, match="Low price is higher than high price"):
         validate_low_prices(data)
+
+
+def test_accepts_valid_corporate_actions() -> None:
+    data = pd.DataFrame(
+        {
+            "adj_close": [100.0],
+            "dividends": [0.0],
+            "stock_splits": [2.0],
+        }
+    )
+
+    validate_corporate_actions(data)
+
+
+def test_rejects_negative_dividend() -> None:
+    data = pd.DataFrame(
+        {
+            "adj_close": [100.0],
+            "dividends": [-1.0],
+            "stock_splits": [0.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="Negative dividend found"):
+        validate_corporate_actions(data)
+
+
+def test_rejects_negative_split_ratio() -> None:
+    data = pd.DataFrame(
+        {
+            "adj_close": [100.0],
+            "dividends": [0.0],
+            "stock_splits": [-2.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="Negative stock split ratio found"):
+        validate_corporate_actions(data)
