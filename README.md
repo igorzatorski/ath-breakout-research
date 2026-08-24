@@ -61,8 +61,9 @@ python scripts/update_market_data.py
 The updater stores one raw Parquet file and one processed Parquet file per
 security. Existing securities receive a short overlapping Yahoo download,
 duplicate sessions are replaced, and the complete validated history is
-processed again. Price files for securities that leave the current universe
-are retained but are not updated or screened.
+processed again. Securities that leave the current universe remain in the
+security registry and their prices continue to update, but they are marked as
+outside the current universe and will not be used by the current screener.
 
 The next development stage is the screener and candidate ranking. The IWV
 snapshot contains current ETF holdings, not historical point-in-time Russell

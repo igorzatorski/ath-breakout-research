@@ -64,10 +64,13 @@ def test_updates_raw_processed_and_manifest(tmp_path, monkeypatch) -> None:
         {
             "security_id": ["AAPL"],
             "ticker": ["AAPL"],
+            "in_current_universe": [True],
         }
     )
+    download_arguments = {}
 
     def fake_download(**kwargs):
+        download_arguments.update(kwargs)
         return (
             make_prices(["2026-08-20", "2026-08-21"], [100.0, 102.0]),
             [],
@@ -100,8 +103,44 @@ def test_updates_raw_processed_and_manifest(tmp_path, monkeypatch) -> None:
         if column in processed_data.columns
     ]
     assert manifest["status"].tolist() == ["success"]
+    assert manifest["in_current_universe"].tolist() == [True]
+    assert download_arguments["end_date"] == "2026-08-22"
     assert (tmp_path / "state" / "manifest.csv").exists()
     assert not (tmp_path / "state" / "manifest.tmp.csv").exists()
+
+
+def test_updates_security_outside_current_universe(tmp_path, monkeypatch) -> None:
+    registry = pd.DataFrame(
+        {
+            "security_id": ["MSFT"],
+            "ticker": ["MSFT"],
+            "in_current_universe": [False],
+        }
+    )
+
+    def fake_download(**kwargs):
+        data = make_prices(["2026-08-21"], [200.0])
+        data["security_id"] = "MSFT"
+        data["ticker"] = "MSFT"
+        return data, []
+
+    monkeypatch.setattr(
+        "ath_breakout.data.market_update.download_yfinance_ohlcv",
+        fake_download,
+    )
+
+    manifest = update_market_data(
+        universe=registry,
+        raw_directory=tmp_path / "raw",
+        processed_directory=tmp_path / "processed",
+        manifest_file=tmp_path / "manifest.csv",
+        today=date(2026, 8, 24),
+        batch_size=1,
+    )
+
+    assert (tmp_path / "raw" / "MSFT.parquet").exists()
+    assert manifest["in_current_universe"].tolist() == [False]
+    assert manifest["status"].tolist() == ["success"]
 
 
 def test_rejects_empty_universe(tmp_path) -> None:

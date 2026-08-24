@@ -1,4 +1,4 @@
-"""Incrementally update market data for the current security universe."""
+"""Incrementally update market data for every known security."""
 
 from datetime import date, timedelta
 from pathlib import Path
@@ -71,7 +71,7 @@ def update_market_data(
     today: date | None = None,
     batch_size: int = 50,
 ) -> pd.DataFrame:
-    """Update and process every security in the supplied current universe."""
+    """Update and process every security in the supplied registry."""
     validate_universe(universe)
 
     if len(universe) == 0:
@@ -81,7 +81,8 @@ def update_market_data(
         raise ValueError("batch_size must be greater than zero")
 
     current_date = today or date.today()
-    end_date = (current_date + timedelta(days=1)).isoformat()
+    # Yahoo excludes end_date, so using today keeps an unfinished daily bar out.
+    end_date = current_date.isoformat()
     raw_directory_path = Path(raw_directory)
     processed_directory_path = Path(processed_directory)
     manifest_path = Path(manifest_file)
@@ -125,6 +126,9 @@ def update_market_data(
                         {
                             "security_id": security_id,
                             "ticker": ticker,
+                            "in_current_universe": bool(
+                                security.get("in_current_universe", True)
+                            ),
                             "status": "failed",
                             "last_date": None,
                             "updated_at": current_date,
@@ -153,6 +157,9 @@ def update_market_data(
                     {
                         "security_id": security_id,
                         "ticker": ticker,
+                        "in_current_universe": bool(
+                            security.get("in_current_universe", True)
+                        ),
                         "status": "success",
                         "last_date": complete_history["date"].max().date(),
                         "updated_at": current_date,
