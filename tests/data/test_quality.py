@@ -5,8 +5,10 @@ import pandas as pd
 from ath_breakout.data.quality import (
     build_data_quality_report,
     count_missing_sessions,
-    latest_expected_session,
     save_data_quality_report,
+)
+from ath_breakout.data.market_calendar import (
+    latest_expected_session,
     valid_nyse_sessions,
 )
 from ath_breakout.data.storage import save_security_data
@@ -16,6 +18,25 @@ def test_latest_expected_session_excludes_today() -> None:
     result = latest_expected_session(date(2024, 12, 4))
 
     assert result == pd.Timestamp("2024-12-03")
+
+
+def test_quality_report_uses_explicit_completed_session(tmp_path) -> None:
+    manifest = pd.DataFrame(
+        {
+            "security_id": ["MISSING"],
+            "ticker": ["MISSING"],
+            "status": ["failed"],
+        }
+    )
+
+    report = build_data_quality_report(
+        manifest,
+        tmp_path,
+        today=date(2024, 12, 4),
+        expected_latest_date=date(2024, 12, 4),
+    )
+
+    assert report.loc[0, "expected_latest_date"] == date(2024, 12, 4)
 
 
 def test_thanksgiving_is_not_reported_as_a_gap() -> None:

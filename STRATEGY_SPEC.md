@@ -82,21 +82,29 @@ artificially executed using the last known price.
 
 ### 4.3. Consolidation and ranking
 
-Preference should be given to stocks emerging from a long and tight
-consolidation, but its exact definition has not yet been agreed. A future
-version should consider:
+The current MVP requires a base lasting at least 20 sessions, no deeper than
+15%, and at least 20 sessions after a previous close breakout. It must pass at
+least three of four construction checks: ATR contraction, recent-range
+contraction, rising lows, and drying volume.
 
-- consolidation length in trading sessions;
-- price-range width;
-- ATR or another volatility measure;
-- distance from the prior ATH;
-- volume behaviour;
-- the trend preceding the consolidation;
-- minimum price and liquidity requirements.
+Candidates passing the hard eligibility filters receive a transparent
+0-100 setup score:
 
-Until these parameters are approved, consolidation is not a mandatory coded
-entry filter. Its definition must not be selected solely because it produces
-the strongest historical result.
+| Setup category | Maximum points |
+|---|---:|
+| Base shape | 20 |
+| Base maturity | 10 |
+| Trend | 20 |
+| Relative strength versus IWV | 20 |
+| Volatility contraction | 15 |
+| ATH readiness | 15 |
+
+Liquidity, minimum price, extreme gaps, drawdown, and excessive volatility
+remain hard filters rather than ranking points. A separate 0-100 breakout
+quality score is calculated only after a breakout from volume confirmation,
+closing location within the session, and extension above ATH. These weights
+are explicit MVP hypotheses and must be validated historically rather than
+optimized solely against the strongest in-sample result.
 
 ## 5. Position size and exposure
 
@@ -171,7 +179,8 @@ The following items must be defined unambiguously before the full backtest:
    actions.
 2. Exact consolidation parameters.
 3. Minimum price, liquidity, and listing-history requirements.
-4. Candidate ranking when the number of signals exceeds available slots.
+4. How setup score and breakout quality should be combined when signals exceed
+   available portfolio slots.
 5. Whether the +50% and +100% thresholds are activated by `close` or daily
    `high`.
 6. Share-quantity rounding and the treatment of residual cash.

@@ -120,6 +120,94 @@ def test_full_refresh_replaces_old_schema_instead_of_merging(
     assert result["dividends"].tolist() == [1.0]
 
 
+def test_manual_full_refresh_redownloads_and_replaces_complete_history(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    universe = pd.DataFrame(
+        {"security_id": ["AAPL"], "ticker": ["AAPL"]}
+    )
+    raw_file = tmp_path / "raw" / "AAPL.parquet"
+    old_data = make_prices(["2020-01-02"], [50.0])
+    old_data["adj_close"] = old_data["close"]
+    old_data["dividends"] = 0.0
+    old_data["stock_splits"] = 0.0
+    old_data["repaired"] = False
+    save_security_data(old_data, raw_file)
+    download_arguments = {}
+
+    refreshed_data = make_prices(["2020-01-03"], [101.0])
+
+    def fake_download(**kwargs):
+        download_arguments.update(kwargs)
+        return refreshed_data, []
+
+    monkeypatch.setattr(
+        "ath_breakout.data.market_update.download_yfinance_ohlcv",
+        fake_download,
+    )
+
+    update_market_data(
+        universe=universe,
+        raw_directory=tmp_path / "raw",
+        processed_directory=tmp_path / "processed",
+        manifest_file=tmp_path / "manifest.csv",
+        today=date(2026, 8, 24),
+        batch_size=1,
+        full_refresh=True,
+    )
+
+    result = load_security_data(raw_file)
+
+    assert download_arguments["start_date"] == "1900-01-01"
+    assert result["date"].dt.strftime("%Y-%m-%d").tolist() == [
+        "2020-01-03"
+    ]
+    assert result["close"].tolist() == [101.0]
+
+
+def test_failed_full_refresh_preserves_existing_history(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    universe = pd.DataFrame(
+        {"security_id": ["AAPL"], "ticker": ["AAPL"]}
+    )
+    raw_file = tmp_path / "raw" / "AAPL.parquet"
+    old_data = make_prices(["2020-01-02"], [50.0])
+    old_data["adj_close"] = old_data["close"]
+    old_data["dividends"] = 0.0
+    old_data["stock_splits"] = 0.0
+    old_data["repaired"] = False
+    save_security_data(old_data, raw_file)
+
+    def failed_download(**kwargs):
+        return pd.DataFrame(columns=["ticker"]), ["AAPL"]
+
+    monkeypatch.setattr(
+        "ath_breakout.data.market_update.download_yfinance_ohlcv",
+        failed_download,
+    )
+
+    manifest = update_market_data(
+        universe=universe,
+        raw_directory=tmp_path / "raw",
+        processed_directory=tmp_path / "processed",
+        manifest_file=tmp_path / "manifest.csv",
+        today=date(2026, 8, 24),
+        batch_size=1,
+        full_refresh=True,
+    )
+
+    preserved = load_security_data(raw_file)
+
+    assert manifest["status"].tolist() == ["failed"]
+    assert preserved["date"].dt.strftime("%Y-%m-%d").tolist() == [
+        "2020-01-02"
+    ]
+    assert preserved["close"].tolist() == [50.0]
+
+
 def test_merge_replaces_overlap_without_duplicate_session() -> None:
     existing = make_prices(["2026-08-20", "2026-08-21"], [100.0, 101.0])
     downloaded = make_prices(["2026-08-21", "2026-08-22"], [102.0, 103.0])
@@ -226,6 +314,37 @@ def test_updates_security_outside_current_universe(tmp_path, monkeypatch) -> Non
     assert manifest["status"].tolist() == ["success"]
 
 
+def test_download_through_includes_the_selected_session(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    universe = pd.DataFrame(
+        {"security_id": ["AAPL"], "ticker": ["AAPL"]}
+    )
+    download_arguments = {}
+
+    def fake_download(**kwargs):
+        download_arguments.update(kwargs)
+        return make_prices(["2026-08-24"], [100.0]), []
+
+    monkeypatch.setattr(
+        "ath_breakout.data.market_update.download_yfinance_ohlcv",
+        fake_download,
+    )
+
+    update_market_data(
+        universe=universe,
+        raw_directory=tmp_path / "raw",
+        processed_directory=tmp_path / "processed",
+        manifest_file=tmp_path / "manifest.csv",
+        today=date(2026, 8, 24),
+        download_through=date(2026, 8, 24),
+        batch_size=1,
+    )
+
+    assert download_arguments["end_date"] == "2026-08-25"
+
+
 def test_rejects_empty_universe(tmp_path) -> None:
     empty_universe = pd.DataFrame(columns=["security_id", "ticker"])
 
@@ -262,14 +381,29 @@ def test_prints_timestamped_progress(capsys) -> None:
         total_batches=4,
         successful=90,
         failed=10,
+        total_securities=100,
     )
 
     output = capsys.readouterr().out
 
     assert "50.00%" in output
     assert "batch 2/4" in output
-    assert "success: 90" in output
-    assert "failed: 10" in output
+    assert "success:  90" in output
+    assert "failed:  10" in output
+
+
+def test_update_progress_columns_do_not_move_at_digit_boundaries(capsys) -> None:
+    print_update_progress(9, 53, 450, 0, total_securities=2575)
+    print_update_progress(10, 53, 500, 0, total_securities=2575)
+    print_update_progress(20, 53, 1000, 10, total_securities=2575)
+
+    lines = capsys.readouterr().out.splitlines()
+    separator_positions = [
+        [index for index, character in enumerate(line) if character == "|"]
+        for line in lines
+    ]
+    assert separator_positions[0] == separator_positions[1]
+    assert separator_positions[1] == separator_positions[2]
 
 
 def test_invalid_security_does_not_stop_other_securities(

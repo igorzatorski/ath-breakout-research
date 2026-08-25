@@ -12,6 +12,25 @@ RAW_DIRECTORY = Path("data/raw/yfinance")
 PROCESSED_DIRECTORY = Path("data/processed/features")
 
 
+def print_rebuild_progress(
+    completed: int,
+    total: int,
+    successful: int,
+    failed: int,
+) -> None:
+    """Print fixed-width counters for a processed-data rebuild."""
+    percentage = 100 * completed / total if total > 0 else 100.0
+    count_width = len(str(max(total, 1)))
+    print(
+        f"[{datetime.now():%Y-%m-%d %H:%M:%S}] "
+        f"{percentage:6.2f}% "
+        f"({completed:>{count_width}}/{total}) | "
+        f"success: {successful:>{count_width}} | "
+        f"failed: {failed:>{count_width}}",
+        flush=True,
+    )
+
+
 def main() -> None:
     started_at = datetime.now()
     raw_files = sorted(RAW_DIRECTORY.glob("*.parquet"))
@@ -36,12 +55,11 @@ def main() -> None:
             print(f"  failed {raw_file.stem}: {type(error).__name__}: {error}")
 
         if file_number % 50 == 0 or file_number == len(raw_files):
-            percentage = 100 * file_number / len(raw_files)
-            print(
-                f"[{datetime.now():%Y-%m-%d %H:%M:%S}] "
-                f"{percentage:6.2f}% ({file_number}/{len(raw_files)}) | "
-                f"success: {successful} | failed: {failed}",
-                flush=True,
+            print_rebuild_progress(
+                completed=file_number,
+                total=len(raw_files),
+                successful=successful,
+                failed=failed,
             )
 
     elapsed = datetime.now() - started_at

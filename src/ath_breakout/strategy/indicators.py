@@ -3,7 +3,7 @@
 import pandas as pd
 
 
-MOVING_AVERAGE_WINDOWS = (50, 100, 150)
+MOVING_AVERAGE_WINDOWS = (50, 100, 150, 200)
 
 
 def add_moving_averages(data: pd.DataFrame) -> pd.DataFrame:

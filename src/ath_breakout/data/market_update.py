@@ -38,6 +38,7 @@ def print_update_progress(
     total_batches: int,
     successful: int,
     failed: int,
+    total_securities: int | None = None,
 ) -> None:
     """Print one timestamped progress line for the market-data update."""
     bar_width = 30
@@ -50,11 +51,19 @@ def print_update_progress(
 
     progress_bar = "#" * completed_width + "-" * (bar_width - completed_width)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    batch_width = len(str(max(total_batches, 1)))
+    security_capacity = (
+        total_securities
+        if total_securities is not None
+        else max(successful + failed, 1)
+    )
+    security_width = len(str(max(security_capacity, 1)))
 
     print(
         f"[{timestamp}] [{progress_bar}] {percentage:6.2f}% "
-        f"batch {completed_batches}/{total_batches} | "
-        f"success: {successful} | failed: {failed}",
+        f"batch {completed_batches:>{batch_width}}/{total_batches} | "
+        f"success: {successful:>{security_width}} | "
+        f"failed: {failed:>{security_width}}",
         flush=True,
     )
 
@@ -119,7 +128,9 @@ def update_market_data(
     processed_directory: str | Path,
     manifest_file: str | Path,
     today: date | None = None,
+    download_through: date | None = None,
     batch_size: int = 50,
+    full_refresh: bool = False,
 ) -> pd.DataFrame:
     """Update and process every security in the supplied registry."""
     validate_universe(universe)
@@ -131,8 +142,11 @@ def update_market_data(
         raise ValueError("batch_size must be greater than zero")
 
     current_date = today or date.today()
-    # Yahoo excludes end_date, so using today keeps an unfinished daily bar out.
-    end_date = current_date.isoformat()
+    if download_through is None:
+        end_date = current_date.isoformat()
+    else:
+        # Yahoo excludes end_date, so request the day after the target session.
+        end_date = (download_through + timedelta(days=1)).isoformat()
     raw_directory_path = Path(raw_directory)
     processed_directory_path = Path(processed_directory)
     manifest_path = Path(manifest_file)
@@ -148,7 +162,10 @@ def update_market_data(
             security_id,
         )
 
-        if not retry_is_due(previous_row, current_date):
+        if full_refresh == False and not retry_is_due(
+            previous_row,
+            current_date,
+        ):
             deferred_row = previous_row.to_dict()
             deferred_row["ticker"] = security["ticker"]
             deferred_row["in_current_universe"] = bool(
@@ -162,16 +179,28 @@ def update_market_data(
             raw_directory_path,
             security_id,
         )
-        start_date = download_start_for_security(raw_file)
+        if full_refresh:
+            start_date = FULL_HISTORY_START
+        else:
+            start_date = download_start_for_security(raw_file)
         download_groups.setdefault(start_date, []).append(security)
 
     total_batches = sum(
         (len(securities) + batch_size - 1) // batch_size
         for securities in download_groups.values()
     )
+    total_securities = sum(
+        len(securities) for securities in download_groups.values()
+    )
     completed_batches = 0
 
-    print_update_progress(0, total_batches, successful=0, failed=0)
+    print_update_progress(
+        0,
+        total_batches,
+        successful=0,
+        failed=0,
+        total_securities=total_securities,
+    )
 
     for start_date, securities in download_groups.items():
         for batch_start in range(0, len(securities), batch_size):
@@ -210,9 +239,11 @@ def update_market_data(
 
                     ticker_download["security_id"] = security_id
 
-                    replace_old_schema = requires_full_schema_refresh(raw_file)
+                    replace_complete_history = (
+                        full_refresh or requires_full_schema_refresh(raw_file)
+                    )
 
-                    if raw_file.exists() and replace_old_schema == False:
+                    if raw_file.exists() and replace_complete_history == False:
                         existing_data = load_security_data(raw_file)
                     else:
                         existing_data = pd.DataFrame(
@@ -292,6 +323,7 @@ def update_market_data(
                 total_batches,
                 int(successful_count),
                 int(failed_count),
+                total_securities=total_securities,
             )
 
     if total_batches == 0:
@@ -300,6 +332,12 @@ def update_market_data(
         temporary_manifest_path = manifest_path.with_suffix(".tmp.csv")
         manifest.to_csv(temporary_manifest_path, index=False)
         temporary_manifest_path.replace(manifest_path)
-        print_update_progress(0, 0, successful=0, failed=0)
+        print_update_progress(
+            0,
+            0,
+            successful=0,
+            failed=0,
+            total_securities=0,
+        )
 
     return pd.DataFrame(manifest_rows)

@@ -4,34 +4,12 @@ from datetime import date
 from pathlib import Path
 
 import pandas as pd
-import pandas_market_calendars as market_calendars
-
+from ath_breakout.data.market_calendar import latest_expected_session
+from ath_breakout.data.market_calendar import valid_nyse_sessions
 from ath_breakout.data.storage import load_security_data, security_file_path
 
 
-NYSE_CALENDAR = market_calendars.get_calendar("NYSE")
 CALENDAR_START = "1900-01-01"
-
-
-def valid_nyse_sessions(start_date: str | date, end_date: str | date) -> pd.DatetimeIndex:
-    """Return timezone-free dates on which the NYSE was open."""
-    sessions = NYSE_CALENDAR.valid_days(
-        start_date=start_date,
-        end_date=end_date,
-    )
-    return sessions.tz_localize(None).normalize()
-
-
-def latest_expected_session(today: date) -> pd.Timestamp:
-    """Return the latest completed session expected by the daily updater."""
-    end_date = pd.Timestamp(today) - pd.Timedelta(days=1)
-    start_date = end_date - pd.Timedelta(days=14)
-    sessions = valid_nyse_sessions(start_date, end_date)
-
-    if len(sessions) == 0:
-        raise ValueError("No completed NYSE session found")
-
-    return sessions[-1]
 
 
 def count_missing_sessions(
@@ -57,9 +35,13 @@ def build_data_quality_report(
     manifest: pd.DataFrame,
     processed_directory: str | Path,
     today: date,
+    expected_latest_date: date | None = None,
 ) -> pd.DataFrame:
     """Build one quality row for every security attempted by the updater."""
-    expected_latest = latest_expected_session(today)
+    if expected_latest_date is None:
+        expected_latest = latest_expected_session(today)
+    else:
+        expected_latest = pd.Timestamp(expected_latest_date)
     expected_sessions = valid_nyse_sessions(CALENDAR_START, expected_latest)
     report_rows = []
 

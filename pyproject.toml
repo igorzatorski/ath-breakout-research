@@ -12,6 +12,7 @@ dependencies = [
     "pandas>=2.2",
     "pandas-market-calendars>=5.1",
     "pyarrow>=17",
+    "tabulate>=0.9",
     "yfinance>=1.2",
 ]
 

@@ -10,9 +10,12 @@ def security_file_path(directory: str | Path, security_id: str) -> Path:
     return Path(directory) / f"{security_id}.parquet"
 
 
-def load_security_data(file_path: str | Path) -> pd.DataFrame:
+def load_security_data(
+    file_path: str | Path,
+    columns: list[str] | None = None,
+) -> pd.DataFrame:
     """Load one security's Parquet history."""
-    return pd.read_parquet(file_path)
+    return pd.read_parquet(file_path, columns=columns)
 
 
 def save_security_data(data: pd.DataFrame, file_path: str | Path) -> None:
