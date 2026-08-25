@@ -27,6 +27,7 @@ SCREEN_COLUMNS = [
     "split_adj_high",
     "split_adj_low",
     "split_adj_close",
+    "close",
     "volume",
     "sma_50",
     "sma_100",

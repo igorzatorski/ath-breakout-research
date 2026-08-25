@@ -3,8 +3,44 @@ from pathlib import Path
 import sys
 
 import pandas as pd
+import pytest
 
 from scripts import run_data_pipeline
+
+
+def test_waits_until_yahoo_exposes_target_session(monkeypatch, capsys) -> None:
+    availability = iter([False, True])
+    monkeypatch.setattr(
+        run_data_pipeline,
+        "yahoo_session_is_available",
+        lambda session: next(availability),
+    )
+    monkeypatch.setattr(run_data_pipeline.time, "sleep", lambda seconds: None)
+
+    run_data_pipeline.wait_for_yahoo_session(
+        date(2026, 8, 24),
+        max_wait_minutes=60,
+        poll_seconds=120,
+    )
+
+    output = capsys.readouterr().out
+    assert "Yahoo is not ready yet" in output
+    assert "Yahoo session 2026-08-24 is available" in output
+
+
+def test_yahoo_wait_fails_clearly_when_disabled(monkeypatch) -> None:
+    monkeypatch.setattr(
+        run_data_pipeline,
+        "yahoo_session_is_available",
+        lambda session: False,
+    )
+
+    with pytest.raises(RuntimeError, match="has not published session"):
+        run_data_pipeline.wait_for_yahoo_session(
+            date(2026, 8, 24),
+            max_wait_minutes=0,
+            poll_seconds=120,
+        )
 
 
 def test_main_forwards_full_refresh_and_finishes_with_timezone_aware_time(
@@ -32,6 +68,11 @@ def test_main_forwards_full_refresh_and_finishes_with_timezone_aware_time(
         run_data_pipeline,
         "resolve_completed_session",
         lambda **kwargs: pd.Timestamp("2026-08-21"),
+    )
+    monkeypatch.setattr(
+        run_data_pipeline,
+        "yahoo_session_is_available",
+        lambda session: True,
     )
     monkeypatch.setattr(
         run_data_pipeline,
@@ -81,7 +122,8 @@ def test_main_forwards_full_refresh_and_finishes_with_timezone_aware_time(
     output = capsys.readouterr().out
     assert len(update_calls) == 2
     assert update_calls[0]["full_refresh"] is True
+    assert update_calls[0]["retry_failed_now"] is True
     assert update_calls[0]["download_through"] == date(2026, 8, 21)
-    assert update_calls[1]["universe"]["ticker"].tolist() == ["IWV"]
+    assert update_calls[1]["universe"]["ticker"].tolist() == ["IWV", "SPY"]
     assert "Mode: FULL REFRESH" in output
     assert "Finished: 1 successful, 0 failed" in output

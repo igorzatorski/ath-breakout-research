@@ -67,6 +67,19 @@ def test_builds_ranking_ready_security_snapshot() -> None:
     assert 0 <= result["breakout_quality_score"] <= 100
 
 
+def test_price_and_liquidity_filters_use_point_in_time_nominal_prices() -> None:
+    data = make_processed_prices()
+    data["close"] = 50.0
+    data["volume"] = 300_000
+    data["split_adj_close"] = 1.0
+
+    result = build_security_snapshot(data, date(2024, 12, 3))
+
+    assert result is not None
+    assert result["passes_price_filter"] == True
+    assert result["liquidity_dollar_volume_20"] == 15_000_000
+
+
 def test_calculates_relative_strength_against_iwv() -> None:
     data = make_processed_prices()
     benchmark = data[["date", "split_adj_close"]].copy()
@@ -314,3 +327,29 @@ def test_rejects_security_without_the_scan_date() -> None:
     result = build_security_snapshot(data, date(2024, 12, 4))
 
     assert result is None
+
+
+def test_historical_score_ignores_future_benchmark_rows() -> None:
+    data = make_processed_prices()
+    scan_date = data.iloc[-1]["date"].date()
+    benchmark = data[["date", "split_adj_close"]].copy()
+    future = pd.DataFrame(
+        {
+            "date": [pd.Timestamp(scan_date) + pd.Timedelta(days=1)],
+            "split_adj_close": [benchmark.iloc[-1]["split_adj_close"] * 10],
+        }
+    )
+
+    point_in_time = build_security_snapshot(data, scan_date, benchmark)
+    with_future = build_security_snapshot(
+        data,
+        scan_date,
+        pd.concat([benchmark, future], ignore_index=True),
+    )
+
+    assert point_in_time is not None
+    assert with_future is not None
+    assert with_future["relative_strength_12m"] == pytest.approx(
+        point_in_time["relative_strength_12m"]
+    )
+    assert with_future["setup_score"] == point_in_time["setup_score"]

@@ -18,17 +18,16 @@ The core strategy rules and open decisions are documented in
 
 ## Development roadmap
 
-1. Data layer and data/universe validation
-2. Screener and candidate ranking
-3. Simple backtest
-4. Portfolio Manager
-5. Full point-in-time backtest
-6. Position sizing and research
-7. Dashboard
+1. Completed: Yahoo/CSV data layer and data-quality reporting
+2. Completed: current and historical screener with transparent ranking
+3. Completed: multi-asset portfolio backtest and interactive report
+4. Next: cached historical signals and faster research iterations
+5. Next: ranking, market-regime, entry, and exit research
+6. Target: point-in-time Russell 3000/CRSP backtest
 
 ## Status
 
-The data pipeline required before building the first screener is available:
+The current research MVP includes:
 
 - local CSV and Yahoo Finance adapters;
 - shared OHLCV validation and chronological sorting;
@@ -38,7 +37,10 @@ The data pipeline required before building the first screener is available:
 - NYSE-calendar freshness and missing-session quality checks;
 - multi-security data identified by `security_id` and `ticker`;
 - prior ATH and close breakout signal without using the current day's high;
-- an IWV holdings snapshot used as a current Russell 3000 proxy universe.
+- an IWV holdings snapshot used as a current Russell 3000 proxy universe;
+- ranked current and historical screeners;
+- a 33-position, next-open portfolio simulator with transaction costs;
+- terminal statistics and an interactive Plotly backtest dashboard.
 
 Install the project and its development tools once inside the active
 environment:
@@ -48,6 +50,47 @@ python -m pip install -e ".[dev]"
 ```
 
 ## Command cheat sheet
+
+### Portfolio backtest
+
+Run the complete ranked multi-asset portfolio over the latest five years:
+
+```powershell
+python scripts/run_portfolio_backtest.py
+```
+
+The terminal prints full equity, S&P 500, drawdown, and exposure charts plus
+statistics and recent trades. The command also opens an interactive dashboard.
+By default the portfolio holds at most 33 positions, targets 3% of current
+equity for each new position, and leaves unused capital in cash. Signals known
+at a session close execute at the next available open. Candidates compete for
+available slots by setup score and then breakout-quality score.
+
+Select an exact period or change transparent assumptions when needed:
+
+```powershell
+python scripts/run_portfolio_backtest.py --start 2021-01-01 --end 2025-12-31
+python scripts/run_portfolio_backtest.py --capital 50000 --cost-bps 15
+```
+
+`--start` is the first session on which the portfolio may accept a signal and
+measure performance. Earlier stored history is still used to calculate prior
+ATH, moving averages, consolidation features, and ranking. For example, to
+measure from 2017 while retaining all earlier warm-up history:
+
+```powershell
+python scripts/run_portfolio_backtest.py --start 2017-01-01 --min-setup-score 70
+```
+
+An optional ranking floor can be tested with `--min-setup-score`. The default
+is `0`, because the first five-year diagnostic did not show that a higher
+absolute score improved returns; this option is a research control, not a
+validated source of alpha.
+
+Use `--no-open` to save the interactive HTML dashboard without opening it.
+Results are stored under `outputs/backtests/portfolio/<START>_<END>/`.
+
+### Daily data pipeline
 
 The daily data workflow has one entry point. It saves or reuses today's IWV
 snapshot, updates every known security through the latest available session,
@@ -60,6 +103,15 @@ python scripts/run_data_pipeline.py
 Use this command for the normal daily update. Existing securities receive only
 a short overlapping update; a newly discovered security receives its complete
 available history.
+
+After the NYSE closes, Yahoo may publish its daily bar with a delay. The normal
+pipeline checks SPY first and waits for up to 60 minutes instead of silently
+building a stale screener. It checks every two minutes. Both limits can be
+changed, for example:
+
+```powershell
+python scripts/run_data_pipeline.py --max-wait-minutes 30 --poll-seconds 60
+```
 
 In automatic mode the pipeline checks the NYSE calendar and market-close time.
 Before or during the US session it uses the previous completed session; after

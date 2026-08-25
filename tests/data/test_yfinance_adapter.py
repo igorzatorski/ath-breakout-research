@@ -4,6 +4,19 @@ import pytest
 
 from ath_breakout.data.adapters.yfinance import download_yfinance_ohlcv
 from ath_breakout.data.adapters.yfinance import normalize_yfinance_download
+from ath_breakout.data.adapters.yfinance import yahoo_session_is_available
+
+
+def test_detects_whether_yahoo_has_published_requested_session(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "ath_breakout.data.adapters.yfinance.yf.download",
+        lambda **kwargs: pd.DataFrame(index=pd.to_datetime(["2026-08-24"])),
+    )
+
+    assert yahoo_session_is_available(pd.Timestamp("2026-08-24").date())
+    assert not yahoo_session_is_available(pd.Timestamp("2026-08-25").date())
 
 
 def test_normalizes_multiple_yahoo_tickers() -> None:
@@ -157,3 +170,34 @@ def test_retries_failed_batch_ticker_individually(tmp_path, monkeypatch) -> None
 
     assert failed_tickers == []
     assert result["ticker"].tolist() == ["AAPL"]
+
+
+def test_rejects_ticker_when_required_session_is_still_missing(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    dates = pd.to_datetime(["2024-01-02"])
+    columns = pd.MultiIndex.from_product(
+        [["AAPL"], ["Open", "High", "Low", "Close", "Adj Close", "Volume"]]
+    )
+    stale_download = pd.DataFrame(
+        [[100, 103, 99, 102, 102, 1200000]],
+        index=dates,
+        columns=columns,
+    )
+    stale_download.index.name = "Date"
+    monkeypatch.setattr(
+        "ath_breakout.data.adapters.yfinance.yf.download",
+        lambda **kwargs: stale_download,
+    )
+
+    result, failed_tickers = download_yfinance_ohlcv(
+        tickers=["AAPL"],
+        start_date="2024-01-01",
+        end_date="2024-01-04",
+        cache_directory=tmp_path / "cache",
+        required_session=pd.Timestamp("2024-01-03").date(),
+    )
+
+    assert len(result) == 0
+    assert failed_tickers == ["AAPL"]

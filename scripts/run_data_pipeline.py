@@ -3,9 +3,11 @@
 import argparse
 from datetime import date, datetime
 from pathlib import Path
+import time
 
 import pandas as pd
 
+from ath_breakout.data.adapters.yfinance import yahoo_session_is_available
 from ath_breakout.data.market_update import update_market_data
 from ath_breakout.data.market_calendar import resolve_completed_session
 from ath_breakout.data.quality import build_data_quality_report
@@ -23,7 +25,7 @@ REGISTRY_FILE = Path("data/state/security_registry.csv")
 QUALITY_REPORT_FILE = Path("data/state/data_quality_report.csv")
 BENCHMARK_MANIFEST_FILE = Path("data/state/benchmark_manifest.csv")
 BENCHMARK_UNIVERSE = pd.DataFrame(
-    {"security_id": ["IWV"], "ticker": ["IWV"]}
+    {"security_id": ["IWV", "SPY"], "ticker": ["IWV", "SPY"]}
 )
 
 
@@ -45,7 +47,61 @@ def parse_arguments() -> argparse.Namespace:
             "replace its stored history after a successful download"
         ),
     )
+    parser.add_argument(
+        "--max-wait-minutes",
+        type=int,
+        default=60,
+        help=(
+            "maximum time to wait for Yahoo to publish today's completed "
+            "daily session (default: 60)"
+        ),
+    )
+    parser.add_argument(
+        "--poll-seconds",
+        type=int,
+        default=120,
+        help="seconds between Yahoo availability checks (default: 120)",
+    )
     return parser.parse_args()
+
+
+def wait_for_yahoo_session(
+    target_session: date,
+    max_wait_minutes: int,
+    poll_seconds: int,
+) -> None:
+    """Wait until Yahoo exposes the target daily bar instead of going stale."""
+    if max_wait_minutes < 0:
+        raise ValueError("max_wait_minutes cannot be negative")
+    if poll_seconds <= 0:
+        raise ValueError("poll_seconds must be greater than zero")
+
+    deadline = time.monotonic() + max_wait_minutes * 60
+    attempt = 1
+    while True:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(
+            f"[{timestamp}] Checking Yahoo daily bar for SPY on "
+            f"{target_session} (attempt {attempt})",
+            flush=True,
+        )
+        if yahoo_session_is_available(target_session):
+            print(f"Yahoo session {target_session} is available.")
+            return
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"Yahoo has not published session {target_session} after "
+                f"waiting {max_wait_minutes} minutes. Run the pipeline again "
+                "later or select an earlier completed session with --as-of."
+            )
+        remaining = max(0, int(deadline - time.monotonic()))
+        sleep_seconds = min(poll_seconds, remaining)
+        print(
+            f"Yahoo is not ready yet. Retrying in {sleep_seconds} seconds...",
+            flush=True,
+        )
+        time.sleep(sleep_seconds)
+        attempt += 1
 
 
 def main() -> None:
@@ -61,6 +117,12 @@ def main() -> None:
         print("Mode: FULL REFRESH of every known security")
     else:
         print("Mode: incremental update")
+
+    wait_for_yahoo_session(
+        target_session,
+        arguments.max_wait_minutes,
+        arguments.poll_seconds,
+    )
 
     universe_file = ensure_daily_iwv_snapshot(UNIVERSE_DIRECTORY)
     print(
@@ -84,6 +146,7 @@ def main() -> None:
         manifest_file=MANIFEST_FILE,
         download_through=target_session,
         full_refresh=arguments.full_refresh,
+        retry_failed_now=True,
     )
 
     print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Updating IWV benchmark")
@@ -94,9 +157,10 @@ def main() -> None:
         manifest_file=BENCHMARK_MANIFEST_FILE,
         download_through=target_session,
         full_refresh=arguments.full_refresh,
+        retry_failed_now=True,
     )
-    benchmark_status = benchmark_manifest.iloc[0]["status"]
-    print(f"IWV benchmark: {benchmark_status}")
+    for _, benchmark in benchmark_manifest.iterrows():
+        print(f"{benchmark['ticker']} benchmark: {benchmark['status']}")
 
     successful = (manifest["status"] == "success").sum()
     failed = (manifest["status"] == "failed").sum()

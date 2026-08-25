@@ -26,7 +26,7 @@ advance; both must be measured through a methodologically sound backtest.
 - US equities that belonged to the point-in-time Russell 3000 universe on each
   historical date;
 - historical index membership changes and delisted securities included;
-- Norgate Data or another source providing suitable historical coverage;
+- CRSP or another source providing suitable historical coverage;
 - no survivorship bias or look-ahead bias.
 
 ### MVP
@@ -119,8 +119,9 @@ optimized solely against the strongest in-sample result.
 Example: ten positions at 3% each represent approximately 30% equity exposure
 and 70% uninvested capital.
 
-The procedure for handling more simultaneous candidates than available
-portfolio slots requires a future ranking rule.
+When simultaneous candidates exceed available slots, candidates are ordered by
+setup score and then breakout-quality score. An optional absolute setup-score
+floor is available for research but is not yet treated as validated alpha.
 
 ## 6. Open-position management
 
@@ -175,12 +176,10 @@ execution price.
 
 The following items must be defined unambiguously before the full backtest:
 
-1. The price series used to calculate ATH and the treatment of corporate
-   actions.
-2. Exact consolidation parameters.
-3. Minimum price, liquidity, and listing-history requirements.
-4. How setup score and breakout quality should be combined when signals exceed
-   available portfolio slots.
+1. Exact consolidation and ranking parameters.
+2. Minimum price, liquidity, and listing-history requirements.
+3. Whether setup score and breakout quality predict out-of-sample returns.
+4. Whether a broad-market regime filter should control new entries.
 5. Whether the +50% and +100% thresholds are activated by `close` or daily
    `high`.
 6. Share-quantity rounding and the treatment of residual cash.
@@ -188,15 +187,14 @@ The following items must be defined unambiguously before the full backtest:
 8. Treatment of trading suspensions, delistings, and missing data.
 9. Benchmark selection and the strategy evaluation metrics.
 
-## 10. First implementation scope
+## 10. Current MVP scope
 
-The first technical step should be restricted to one stock and one local CSV
-file:
+The implemented MVP loads and validates Yahoo/CSV data, calculates split-only
+adjusted ATH signals, screens and ranks the current IWV proxy universe, and
+simulates a multi-asset portfolio with next-session execution, moving-average
+exits, position limits, residual cash, dividends, and transaction costs.
 
-1. load and validate daily OHLCV data;
-2. calculate the prior ATH without look-ahead bias;
-3. identify breakout sessions;
-4. save or display the resulting table for manual verification.
-
-This stage does not yet include full-market screening, the Portfolio Manager,
-Streamlit, or any claims about strategy performance.
+It remains a research prototype rather than a reliable Russell 3000 backtest.
+Historical runs use today's IWV holdings and therefore retain survivorship
+bias. The next methodological milestone is point-in-time membership and
+delisting data from CRSP or another institutional source.

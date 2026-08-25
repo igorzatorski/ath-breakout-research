@@ -1,5 +1,6 @@
 """Download and normalize daily market data from Yahoo Finance."""
 
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -16,6 +17,35 @@ CANONICAL_COLUMNS = list(REQUIRED_OHLCV_COLUMNS) + [
     "repaired",
     "prices_split_adjusted",
 ]
+
+
+def yahoo_session_is_available(
+    session: date,
+    ticker: str = "SPY",
+) -> bool:
+    """Return whether Yahoo already publishes a daily row for one session."""
+    end_date = session + timedelta(days=1)
+    try:
+        data = yf.download(
+            tickers=[ticker],
+            start=session.isoformat(),
+            end=end_date.isoformat(),
+            interval="1d",
+            auto_adjust=False,
+            actions=False,
+            repair=True,
+            threads=False,
+            progress=False,
+            multi_level_index=True,
+        )
+    except Exception:
+        return False
+
+    if data is None or len(data) == 0:
+        return False
+
+    downloaded_dates = pd.to_datetime(data.index).date
+    return session in downloaded_dates
 
 
 def normalize_yfinance_download(
@@ -70,6 +100,7 @@ def download_yfinance_ohlcv(
     end_date: str,
     batch_size: int = 50,
     cache_directory: str | Path = "data/cache/yfinance",
+    required_session: date | None = None,
 ) -> tuple[pd.DataFrame, list[str]]:
     """Download tickers in batches and return validated canonical data."""
     if batch_size <= 0:
@@ -106,6 +137,19 @@ def download_yfinance_ohlcv(
             raw_batch,
             ticker_batch,
         )
+        if required_session is not None and len(normalized_batch) > 0:
+            latest_dates = normalized_batch.groupby("ticker")["date"].max()
+            stale_tickers = [
+                ticker
+                for ticker in ticker_batch
+                if ticker in latest_dates.index
+                and pd.Timestamp(latest_dates[ticker]).date()
+                < required_session
+            ]
+            missing_tickers.extend(stale_tickers)
+            normalized_batch = normalized_batch[
+                ~normalized_batch["ticker"].isin(stale_tickers)
+            ]
         failed_tickers.extend(missing_tickers)
 
         available_tickers = normalized_batch["ticker"].unique().tolist()
@@ -150,6 +194,14 @@ def download_yfinance_ohlcv(
             continue
 
         if ticker in retry_failures or len(normalized_retry) == 0:
+            failed_tickers.append(ticker)
+            continue
+
+        if (
+            required_session is not None
+            and pd.to_datetime(normalized_retry["date"]).max().date()
+            < required_session
+        ):
             failed_tickers.append(ticker)
             continue
 

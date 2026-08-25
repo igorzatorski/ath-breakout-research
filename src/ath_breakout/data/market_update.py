@@ -131,6 +131,7 @@ def update_market_data(
     download_through: date | None = None,
     batch_size: int = 50,
     full_refresh: bool = False,
+    retry_failed_now: bool = False,
 ) -> pd.DataFrame:
     """Update and process every security in the supplied registry."""
     validate_universe(universe)
@@ -162,9 +163,13 @@ def update_market_data(
             security_id,
         )
 
-        if full_refresh == False and not retry_is_due(
+        if (
+            full_refresh == False
+            and retry_failed_now == False
+            and not retry_is_due(
             previous_row,
             current_date,
+            )
         ):
             deferred_row = previous_row.to_dict()
             deferred_row["ticker"] = security["ticker"]
@@ -212,6 +217,7 @@ def update_market_data(
                     start_date=start_date,
                     end_date=end_date,
                     batch_size=batch_size,
+                    required_session=download_through,
                 )
             except Exception:
                 downloaded_batch = pd.DataFrame(columns=["ticker"])

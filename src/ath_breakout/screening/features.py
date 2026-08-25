@@ -76,6 +76,13 @@ def build_security_snapshot(
     history = history[history["date"].dt.date <= scan_date]
     history = history.sort_values("date").reset_index(drop=True)
 
+    if benchmark_data is not None:
+        benchmark_data = benchmark_data.copy()
+        benchmark_data["date"] = pd.to_datetime(benchmark_data["date"])
+        benchmark_data = benchmark_data[
+            benchmark_data["date"].dt.date <= scan_date
+        ].sort_values("date").reset_index(drop=True)
+
     if len(history) == 0:
         return None
 
@@ -85,13 +92,14 @@ def build_security_snapshot(
         return None
 
     close = float(latest["split_adj_close"])
+    nominal_close = float(latest["close"])
     prior_ath = latest["prior_ath"]
     recent_20 = history.tail(20)
     recent_60 = history.tail(60)
 
     average_volume_20 = float(recent_20["volume"].mean())
     average_dollar_volume_20 = float(
-        (recent_20["split_adj_close"] * recent_20["volume"]).mean()
+        (recent_20["close"] * recent_20["volume"]).mean()
     )
     volume_ratio_20 = (
         float(latest["volume"]) / average_volume_20
@@ -316,7 +324,10 @@ def build_security_snapshot(
     base_depth_20_pct = _range_depth(recent_20)
     base_depth_60_pct = _range_depth(recent_60)
     passes_history_filter = len(history) >= minimum_history
-    passes_price_filter = close >= minimum_price
+    # Price and liquidity must use values observable on that historical date.
+    # Split-adjusted prices are correct for ATH comparisons but can make a
+    # pre-split $40 stock look retrospectively like it traded below $5.
+    passes_price_filter = nominal_close >= minimum_price
     passes_liquidity_filter = average_dollar_volume_20 >= minimum_dollar_volume
     passes_trend_filter = trend_score == 5
     passes_gap_filter = maximum_abs_gap_60_pct <= maximum_overnight_gap
@@ -522,6 +533,8 @@ def _linear_price_trend(prices: pd.Series) -> tuple[float, float]:
         ((sessions - sessions.mean()) * (clean_prices - clean_prices.mean())).sum()
         / session_variance
     )
+    if clean_prices.nunique() == 1:
+        return 0.0, 0.0
     correlation = sessions.corr(clean_prices)
     return float(slope / clean_prices.mean()), float(correlation ** 2)
 
