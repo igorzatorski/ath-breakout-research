@@ -34,16 +34,28 @@ def parse_arguments(arguments: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "date",
+        nargs="?",
         type=parse_date,
         help="completed NYSE session in YYYY-MM-DD format",
     )
     return parser.parse_args(arguments)
 
 
+def request_scan_date() -> date:
+    """Ask for a historical session when Run was clicked without arguments."""
+    while True:
+        value = input("Historical screener date (YYYY-MM-DD): ").strip()
+        try:
+            return date.fromisoformat(value)
+        except ValueError:
+            print("Invalid date. Use YYYY-MM-DD, for example 2024-05-10.")
+
+
 def main(arguments: list[str] | None = None) -> None:
     """Run and save one historical, no-look-ahead screen."""
     args = parse_arguments(arguments)
-    scan_date = resolve_completed_session(as_of=args.date).date()
+    requested_date = args.date or request_scan_date()
+    scan_date = resolve_completed_session(as_of=requested_date).date()
     started_at = datetime.now()
     print(
         f"[{started_at:%Y-%m-%d %H:%M:%S}] "

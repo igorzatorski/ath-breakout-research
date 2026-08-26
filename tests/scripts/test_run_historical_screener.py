@@ -11,6 +11,15 @@ def test_rejects_a_date_outside_iso_format() -> None:
         run_historical_screener.parse_arguments(["24-08-2026"])
 
 
+def test_prompts_for_date_when_run_without_an_argument(monkeypatch) -> None:
+    answers = iter(["26-08-2026", "2026-08-26"])
+    monkeypatch.setattr("builtins.input", lambda prompt: next(answers))
+
+    result = run_historical_screener.request_scan_date()
+
+    assert result == date(2026, 8, 26)
+
+
 def test_runs_and_saves_a_historical_screen(
     tmp_path,
     monkeypatch,

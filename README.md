@@ -59,6 +59,10 @@ Run the complete ranked multi-asset portfolio over the latest five years:
 python scripts/run_portfolio_backtest.py
 ```
 
+When this script is launched with the editor's Run button and no date options,
+the terminal asks for the start and end dates. Press Enter at both prompts to
+keep the default latest-five-year period.
+
 The terminal prints full equity, S&P 500, drawdown, and exposure charts plus
 statistics and recent trades. The command also opens an interactive dashboard.
 By default the portfolio holds at most 33 positions, targets 3% of current
@@ -212,6 +216,9 @@ Recreate the same screener at a completed historical NYSE session:
 ```powershell
 python scripts/run_historical_screener.py 2023-05-25
 ```
+
+When `run_historical_screener.py` is launched with the editor's Run button and
+no command-line date, it asks for the session in the terminal.
 
 The historical command truncates every security and the IWV benchmark to the
 selected close before calculating ATH, moving averages, filters, and scores.

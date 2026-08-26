@@ -60,6 +60,30 @@ def resolve_period(
     return start_date, end_date
 
 
+def request_optional_date(prompt: str) -> date | None:
+    """Read an optional ISO date, repeating after an invalid value."""
+    while True:
+        value = input(prompt).strip()
+        if value == "":
+            return None
+        try:
+            return date.fromisoformat(value)
+        except ValueError:
+            print("Invalid date. Use YYYY-MM-DD, for example 2017-01-01.")
+
+
+def request_backtest_period() -> tuple[date | None, date | None]:
+    """Ask for a period when Run was clicked without date arguments."""
+    print("Choose the portfolio backtest period.")
+    start_date = request_optional_date(
+        "Start date (YYYY-MM-DD, Enter = latest 5 years): "
+    )
+    end_date = request_optional_date(
+        "End date (YYYY-MM-DD, Enter = latest available session): "
+    )
+    return start_date, end_date
+
+
 def main(arguments: list[str] | None = None) -> None:
     args = parse_arguments(arguments)
     if not SPY_FILE.exists() or not IWV_FILE.exists():
@@ -69,7 +93,15 @@ def main(arguments: list[str] | None = None) -> None:
 
     spy = load_security_data(SPY_FILE)
     iwv = load_security_data(IWV_FILE)
-    start_date, end_date = resolve_period(spy, args.start, args.end)
+    requested_start = args.start
+    requested_end = args.end
+    if arguments is None and args.start is None and args.end is None:
+        requested_start, requested_end = request_backtest_period()
+    start_date, end_date = resolve_period(
+        spy,
+        requested_start,
+        requested_end,
+    )
     started_at = datetime.now()
     print(f"[{started_at:%Y-%m-%d %H:%M:%S}] Starting portfolio backtest")
     print(f"Period: {start_date} to {end_date}")
