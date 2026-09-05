@@ -125,6 +125,13 @@ Validate that a ticker change remains one security under a stable CRSP
 python scripts/validate_wrds_ticker_history.py --username YOUR_WRDS_USERNAME
 ```
 
+Validate an observed delisting return against the corresponding CRSP daily
+return row:
+
+```powershell
+python scripts/validate_wrds_delisting.py --username YOUR_WRDS_USERNAME
+```
+
 The scripts first check Windows Credential Manager and otherwise let the WRDS
 client request the account password interactively. A connection may trigger a
 Duo Mobile push. Do not store the password in this repository. Raw licensed

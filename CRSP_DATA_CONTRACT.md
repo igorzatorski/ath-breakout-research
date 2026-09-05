@@ -62,7 +62,15 @@ Apple's 2025 ordinary cash dividends, and one 2025 non-ordinary distribution.
 `stksecurityinfohist` supplies point-in-time ticker and name intervals while
 `PERMNO` remains the stable security key. A bounded live check confirmed the
 2022 `FB` to `META` transition in two non-overlapping intervals under one
-`PERMNO`. Delistings remain a separate milestone.
+`PERMNO`.
+
+`stkdelists` supplies the observed total return from the final tradable price
+to the delisting outcome. CIZ also stores that return in the daily file on
+`DelDlyDt`, conventionally the trading date immediately after delisting. The
+pipeline must apply this terminal return once. A missing `DelRet` remains
+missing until an explicit research rule is separately chosen and documented.
+A bounded live check confirmed one 2025 `stkdelists` outcome against its exact
+daily `DlyRet` row and `DlyDelFlg` marker.
 
 CRSP return components remain separate: `total_return` maps to `DlyRet`,
 `return_ex_distributions` maps to the price return `DlyRetx`, and
