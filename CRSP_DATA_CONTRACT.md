@@ -1,0 +1,66 @@
+# CRSP Data Contract
+
+## Scope
+
+This document fixes the first source contract for migrating the historical
+research pipeline from Yahoo Finance to the quarterly CRSP Stock Version 2
+(CIZ) database on WRDS. It covers daily security observations only. It does not
+yet switch the screener or backtester to CRSP.
+
+## Verified WRDS schema
+
+The local metadata audit on 2026-09-05 found 95 tables and 2,007 columns in
+`crsp_q_stock`. No licensed observations were read by the audit.
+
+The principal daily source is `crsp_q_stock.dsf_v2`. It already combines daily
+security observations with point-in-time identifiers, security classifications,
+shares outstanding, market capitalization, and cumulative adjustment factors.
+
+Supporting sources required by later milestones are:
+
+| Purpose | Table | Key |
+|---|---|---|
+| Daily security data | `dsf_v2` | `permno`, `dlycaldt` |
+| Historical security identity | `stksecurityinfohist` | `permno`, effective date range |
+| Detailed distributions | `stkdistributions` | `permno`, `disexdt`, `disseqnbr` |
+| Delisting outcomes | `stkdelists` | `permno`, `delistingdt` |
+| Shares history | `stkshares` | `permno`, effective date range |
+| Daily cumulative adjustments | `stkdlycumulativeadjfactor` | `permno`, `dlycaldt` |
+
+## Daily raw contract
+
+`src/ath_breakout/data/adapters/crsp.py` maps the selected CIZ columns to stable
+internal names. `PERMNO` is the security identifier; ticker is point-in-time
+display metadata and must never be used as the historical join key.
+
+The first contract preserves raw OHLC, CRSP returns, dividend summaries,
+cumulative adjustment factors, market capitalization, shares outstanding, and
+security classification flags. Missing numeric values remain missing. The
+adapter does not invent neutral corporate-action values.
+
+## Adjustment boundary
+
+CRSP documents raw price, dividend, share, and volume fields separately from
+cumulative adjustment factors. Comparable adjusted prices are calculated as
+raw price divided by `DlyCumFacPr`; adjusted shares and volume are calculated by
+multiplying by `DlyCumFacShr`.
+
+Those calculations are deliberately deferred to a separate milestone. Before
+the current strategy consumes CRSP prices, the implementation must verify:
+
+1. a normal security with no adjustment events;
+2. a forward or reverse split;
+3. an ordinary cash dividend;
+4. a non-ordinary distribution;
+5. a ticker change under one `PERMNO`;
+6. a delisted security.
+
+## Point-in-time universe boundary
+
+The existing `in_current_universe` registry flag cannot be used by the CRSP
+backtest. A later table will contain effective membership dates for the top
+3,000 eligible securities ranked by lagged liquidity. Membership formed after a
+session close becomes effective no earlier than the following session.
+
+Until that table and delisting handling exist, CRSP data must not be presented
+as a survivorship-bias-free portfolio backtest.

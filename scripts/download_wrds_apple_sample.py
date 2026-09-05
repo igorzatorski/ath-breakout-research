@@ -4,8 +4,7 @@ import argparse
 import os
 from pathlib import Path
 
-import pandas as pd
-
+from ath_breakout.data.adapters.crsp import download_crsp_daily
 from ath_breakout.data.wrds_credentials import load_wrds_password
 
 
@@ -43,22 +42,6 @@ def main() -> None:
             'WRDS support is not installed. Run: python -m pip install -e ".[wrds]"'
         ) from error
 
-    query = """
-        SELECT
-            permno AS security_id,
-            dlycaldt AS date,
-            dlyopen AS open,
-            dlyhigh AS high,
-            dlylow AS low,
-            dlyclose AS close,
-            dlyvol AS volume,
-            dlyret AS total_return
-        FROM crsp_q_stock.dsf_v2
-        WHERE permno = %(permno)s
-          AND dlycaldt BETWEEN %(start_date)s AND %(end_date)s
-        ORDER BY dlycaldt
-    """
-
     password = load_wrds_password(username)
     if password is None:
         print("No Windows credential found; WRDS will request the password.")
@@ -69,32 +52,17 @@ def main() -> None:
         connection_arguments["wrds_password"] = password
     connection = wrds.Connection(**connection_arguments)
     try:
-        data = connection.raw_sql(
-            query,
-            params={
-                "permno": 14593,
-                "start_date": "2025-01-01",
-                "end_date": "2025-12-31",
-            },
-            date_cols=["date"],
+        data = download_crsp_daily(
+            connection,
+            permnos=[14593],
+            start_date="2025-01-01",
+            end_date="2025-12-31",
         )
     finally:
         connection.close()
 
-    expected_columns = [
-        "security_id",
-        "date",
-        "open",
-        "high",
-        "low",
-        "close",
-        "volume",
-        "total_return",
-    ]
     if data.empty:
         raise SystemExit("The query succeeded but returned no Apple rows for 2025.")
-    if data.columns.tolist() != expected_columns:
-        raise SystemExit(f"Unexpected columns: {data.columns.tolist()}")
     if data["security_id"].nunique() != 1 or int(data["security_id"].iloc[0]) != 14593:
         raise SystemExit("The result contains an unexpected security identifier.")
     if not data["date"].is_monotonic_increasing:

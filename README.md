@@ -91,6 +91,15 @@ The sample is saved under `data/raw/wrds_samples/`, which is excluded from Git.
 The script reports only its shape, date bounds, columns, and local path; it does
 not print licensed price observations to the terminal.
 
+Audit table and column metadata before changing the production data contract:
+
+```powershell
+python scripts/audit_wrds_crsp_schema.py --username YOUR_WRDS_USERNAME
+```
+
+The audit reads `information_schema` only. It stores no CRSP observations and
+writes its local result under the Git-ignored `data/state/` directory.
+
 The scripts first check Windows Credential Manager and otherwise let the WRDS
 client request the account password interactively. A connection may trigger a
 Duo Mobile push. Do not store the password in this repository. Raw licensed
