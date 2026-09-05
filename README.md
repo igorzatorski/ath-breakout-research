@@ -148,6 +148,13 @@ python scripts/build_wrds_crsp_universe_history.py --username YOUR_WRDS_USERNAME
 Completed yearly partitions are reused automatically. The combined membership
 history and its manifest remain under Git-ignored local data directories.
 
+After the universe history is complete, download or resume yearly CRSP daily
+partitions, the pre-1993 ATH seed, and detailed delisting outcomes:
+
+```powershell
+python -u scripts/download_wrds_crsp_daily_history.py --username YOUR_WRDS_USERNAME
+```
+
 Check the current coverage boundary before running a backtest or screener:
 
 ```powershell

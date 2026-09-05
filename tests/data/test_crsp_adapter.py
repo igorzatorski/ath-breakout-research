@@ -9,6 +9,7 @@ from ath_breakout.data.adapters.crsp import (
     build_crsp_daily_query,
     download_crsp_daily,
     normalize_crsp_daily,
+    stream_crsp_daily,
 )
 
 
@@ -126,3 +127,35 @@ def test_download_rejects_invalid_permnos(permnos) -> None:
             start_date="2025-01-01",
             end_date="2025-12-31",
         )
+
+
+class StreamingConnection:
+    def __init__(self, chunks: list[pd.DataFrame]) -> None:
+        self.chunks = chunks
+        self.parameters = None
+        self.options = None
+
+    def raw_sql(self, query, params, **options):
+        self.parameters = params
+        self.options = options
+        return iter(self.chunks)
+
+
+def test_streams_normalized_daily_chunks() -> None:
+    rows = sample_crsp_rows()
+    connection = StreamingConnection([rows.iloc[:1], rows.iloc[1:]])
+
+    chunks = list(
+        stream_crsp_daily(
+            connection,
+            permnos=[14593, 14593],
+            start_date="2025-01-01",
+            end_date="2025-12-31",
+            chunksize=1,
+        )
+    )
+
+    assert [len(chunk) for chunk in chunks] == [1, 1]
+    assert connection.parameters["permnos"] == [14593]
+    assert connection.options["return_iter"] is True
+    assert connection.options["chunksize"] == 1

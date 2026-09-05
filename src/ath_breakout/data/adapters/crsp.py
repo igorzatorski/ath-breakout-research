@@ -131,6 +131,36 @@ def download_crsp_daily(
     return normalize_crsp_daily(raw_data)
 
 
+def stream_crsp_daily(
+    connection,
+    permnos: list[int],
+    start_date: date | str,
+    end_date: date | str,
+    chunksize: int = 250_000,
+):
+    """Yield normalized CRSP daily rows without holding a full year in memory."""
+    if len(permnos) == 0:
+        raise ValueError("At least one PERMNO is required")
+    if any(not isinstance(permno, int) or permno <= 0 for permno in permnos):
+        raise ValueError("Every PERMNO must be a positive integer")
+    if chunksize <= 0:
+        raise ValueError("Chunk size must be positive")
+
+    raw_chunks = connection.raw_sql(
+        build_crsp_daily_query(),
+        params={
+            "permnos": sorted(set(permnos)),
+            "start_date": str(start_date),
+            "end_date": str(end_date),
+        },
+        date_cols=["dlycaldt"],
+        chunksize=chunksize,
+        return_iter=True,
+    )
+    for raw_data in raw_chunks:
+        yield normalize_crsp_daily(raw_data)
+
+
 def normalize_crsp_daily(raw_data: pd.DataFrame) -> pd.DataFrame:
     """Convert CRSP CIZ daily rows into the source-neutral raw contract."""
     missing = sorted(set(CRSP_DAILY_SOURCE_COLUMNS) - set(raw_data.columns))
