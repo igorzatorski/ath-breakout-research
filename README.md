@@ -132,6 +132,13 @@ return row:
 python scripts/validate_wrds_delisting.py --username YOUR_WRDS_USERNAME
 ```
 
+Build one server-aggregated top-3,000 liquidity-universe prototype without
+downloading its underlying daily panel:
+
+```powershell
+python scripts/validate_wrds_liquidity_universe.py --username YOUR_WRDS_USERNAME
+```
+
 The scripts first check Windows Credential Manager and otherwise let the WRDS
 client request the account password interactively. A connection may trigger a
 Duo Mobile push. Do not store the password in this repository. Raw licensed

@@ -81,9 +81,21 @@ components, CIZ uses the additive identity `DlyRet = DlyRetx + DlyRetI`.
 ## Point-in-time universe boundary
 
 The existing `in_current_universe` registry flag cannot be used by the CRSP
-backtest. A later table will contain effective membership dates for the top
-3,000 eligible securities ranked by lagged liquidity. Membership formed after a
-session close becomes effective no earlier than the following session.
+backtest. Monthly snapshots select up to 3,000 U.S.-incorporated common stocks
+on NYSE, NYSE American, and Nasdaq. A security needs a formation-date price of
+at least USD 5 and at least 40 valid observations in the approximate 60-session
+lookback. Ranking uses median daily dollar volume, with market capitalization
+and `PERMNO` as deterministic tie-breakers. Aggregation runs inside WRDS so the
+prototype transfers ranked rows rather than the underlying daily panel.
+
+A bounded prototype formed on 2025-09-30 returned 2,729 qualifying securities
+and transferred no underlying daily observations. The target is therefore a
+ceiling of 3,000 rather than a requirement to fill every snapshot.
+
+Membership formed after a session close becomes effective on the following
+session. The production builder will repeat this snapshot monthly from 1993,
+with each membership interval ending immediately before the next snapshot takes
+effect.
 
 Until that table and delisting handling exist, CRSP data must not be presented
 as a survivorship-bias-free portfolio backtest.
