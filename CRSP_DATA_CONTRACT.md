@@ -59,7 +59,10 @@ implementation must verify:
 
 The bounded live validation currently covers items 2-4: Apple's 2020 split,
 Apple's 2025 ordinary cash dividends, and one 2025 non-ordinary distribution.
-Identity changes and delistings remain separate milestones.
+`stksecurityinfohist` supplies point-in-time ticker and name intervals while
+`PERMNO` remains the stable security key. A bounded live check confirmed the
+2022 `FB` to `META` transition in two non-overlapping intervals under one
+`PERMNO`. Delistings remain a separate milestone.
 
 CRSP return components remain separate: `total_return` maps to `DlyRet`,
 `return_ex_distributions` maps to the price return `DlyRetx`, and

@@ -118,6 +118,13 @@ distribution handling:
 python scripts/validate_wrds_distributions.py --username YOUR_WRDS_USERNAME
 ```
 
+Validate that a ticker change remains one security under a stable CRSP
+`PERMNO`:
+
+```powershell
+python scripts/validate_wrds_ticker_history.py --username YOUR_WRDS_USERNAME
+```
+
 The scripts first check Windows Credential Manager and otherwise let the WRDS
 client request the account password interactively. A connection may trigger a
 Duo Mobile push. Do not store the password in this repository. Raw licensed
