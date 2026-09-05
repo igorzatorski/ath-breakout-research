@@ -17,6 +17,11 @@ A coverage check on 2026-09-05 found that the quarterly daily table ends on
 The current screener must reject that release as stale for September 2026 and
 use a separately validated current-market source.
 
+The LSEG metadata audit on 2026-09-05 found 12 matching accessible schemas,
+but no accessible tables in `tr_ds`. Available I/B/E/S and identifier-mapping
+tables do not provide the required current daily OHLC panel. This WRDS account
+therefore has no verified source for filling the post-CRSP screener gap.
+
 The principal daily source is `crsp_q_stock.dsf_v2`. It already combines daily
 security observations with point-in-time identifiers, security classifications,
 shares outstanding, market capitalization, and cumulative adjustment factors.

@@ -149,6 +149,16 @@ Quarterly CRSP is the authoritative historical source. A requested-date
 screener is blocked when the latest CRSP session predates that date; current
 signals require a separately validated current-market source.
 
+Audit accessible LSEG-related schemas before selecting a current-market source:
+
+```powershell
+python scripts/audit_wrds_lseg_access.py --username YOUR_WRDS_USERNAME
+```
+
+The 2026-09-05 audit found no accessible tables in `tr_ds`; the account's other
+LSEG-related libraries do not supply the required current daily OHLC history.
+The live screener therefore still needs a separate current-market provider.
+
 The scripts first check Windows Credential Manager and otherwise let the WRDS
 client request the account password interactively. A connection may trigger a
 Duo Mobile push. Do not store the password in this repository. Raw licensed
