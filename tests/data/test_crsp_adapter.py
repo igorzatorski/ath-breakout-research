@@ -31,6 +31,8 @@ def sample_crsp_rows() -> pd.DataFrame:
                 "dlyretx": Decimal("0.001"),
                 "dlyorddivamt": Decimal("0"),
                 "dlynonorddivamt": Decimal("0"),
+                "dlyfacprc": Decimal("0"),
+                "dlydistretflg": "NO",
                 "dlycumfacpr": Decimal("1"),
                 "dlycumfacshr": Decimal("1"),
                 "dlycap": Decimal("3500000000"),

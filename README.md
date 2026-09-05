@@ -100,6 +100,17 @@ python scripts/audit_wrds_crsp_schema.py --username YOUR_WRDS_USERNAME
 The audit reads `information_schema` only. It stores no CRSP observations and
 writes its local result under the Git-ignored `data/state/` directory.
 
+Validate CRSP cumulative price and share adjustments around Apple's 2020 4:1
+split:
+
+```powershell
+python scripts/validate_wrds_apple_split.py --username YOUR_WRDS_USERNAME
+```
+
+The script saves the local validation sample under the Git-ignored
+`data/processed/wrds_samples/` directory and prints checks rather than price
+observations.
+
 The scripts first check Windows Credential Manager and otherwise let the WRDS
 client request the account password interactively. A connection may trigger a
 Duo Mobile push. Do not store the password in this repository. Raw licensed

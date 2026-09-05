@@ -45,8 +45,10 @@ cumulative adjustment factors. Comparable adjusted prices are calculated as
 raw price divided by `DlyCumFacPr`; adjusted shares and volume are calculated by
 multiplying by `DlyCumFacShr`.
 
-Those calculations are deliberately deferred to a separate milestone. Before
-the current strategy consumes CRSP prices, the implementation must verify:
+`add_crsp_comparable_values` implements these calculations under explicit
+`comparable_*` names. They are not yet wired into the strategy's
+`split_adj_*` columns. Before the current strategy consumes CRSP prices, the
+implementation must verify:
 
 1. a normal security with no adjustment events;
 2. a forward or reverse split;
