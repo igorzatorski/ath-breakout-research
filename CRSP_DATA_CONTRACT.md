@@ -12,6 +12,11 @@ yet switch the screener or backtester to CRSP.
 The local metadata audit on 2026-09-05 found 95 tables and 2,007 columns in
 `crsp_q_stock`. No licensed observations were read by the audit.
 
+A coverage check on 2026-09-05 found that the quarterly daily table ends on
+2026-06-30. Historical backtests must stop at the latest available CRSP session.
+The current screener must reject that release as stale for September 2026 and
+use a separately validated current-market source.
+
 The principal daily source is `crsp_q_stock.dsf_v2`. It already combines daily
 security observations with point-in-time identifiers, security classifications,
 shares outstanding, market capitalization, and cumulative adjustment factors.

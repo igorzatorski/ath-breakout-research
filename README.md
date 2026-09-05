@@ -139,6 +139,16 @@ downloading its underlying daily panel:
 python scripts/validate_wrds_liquidity_universe.py --username YOUR_WRDS_USERNAME
 ```
 
+Check the current coverage boundary before running a backtest or screener:
+
+```powershell
+python scripts/check_wrds_crsp_coverage.py --username YOUR_WRDS_USERNAME
+```
+
+Quarterly CRSP is the authoritative historical source. A requested-date
+screener is blocked when the latest CRSP session predates that date; current
+signals require a separately validated current-market source.
+
 The scripts first check Windows Credential Manager and otherwise let the WRDS
 client request the account password interactively. A connection may trigger a
 Duo Mobile push. Do not store the password in this repository. Raw licensed
