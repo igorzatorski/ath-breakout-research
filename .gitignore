@@ -20,6 +20,10 @@ htmlcov/
 .env
 .env.*
 !.env.example
+.pgpass
+pgpass.conf
+**/.pgpass
+**/pgpass.conf
 
 # IDE and operating-system files
 .idea/

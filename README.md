@@ -51,6 +51,52 @@ python -m pip install -e ".[dev]"
 
 ## Command cheat sheet
 
+### WRDS/CRSP connection check
+
+Install the optional WRDS client in the active environment:
+
+```powershell
+python -m pip install -e ".[wrds]"
+```
+
+On a private Windows account, the password can optionally be stored in Windows
+Credential Manager. The prompt hides all entered characters and the password is
+never written to the repository:
+
+```powershell
+python scripts/store_wrds_credential.py --username YOUR_WRDS_USERNAME
+```
+
+Remove it at any time with:
+
+```powershell
+python scripts/delete_wrds_credential.py --username YOUR_WRDS_USERNAME
+```
+
+Verify access to the quarterly CRSP Stock Version 2 daily table without
+downloading licensed observations:
+
+```powershell
+python scripts/check_wrds_connection.py --username YOUR_WRDS_USERNAME
+```
+
+After the connection check succeeds, download the limited Apple 2025 sample
+used to validate the Python data path:
+
+```powershell
+python scripts/download_wrds_apple_sample.py --username YOUR_WRDS_USERNAME
+```
+
+The sample is saved under `data/raw/wrds_samples/`, which is excluded from Git.
+The script reports only its shape, date bounds, columns, and local path; it does
+not print licensed price observations to the terminal.
+
+The scripts first check Windows Credential Manager and otherwise let the WRDS
+client request the account password interactively. A connection may trigger a
+Duo Mobile push. Do not store the password in this repository. Raw licensed
+CRSP data must remain local and be handled according to the WRDS and
+institutional terms of use.
+
 ### Portfolio backtest
 
 Run the complete ranked multi-asset portfolio over the latest five years:
