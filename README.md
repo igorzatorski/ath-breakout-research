@@ -139,6 +139,15 @@ downloading its underlying daily panel:
 python scripts/validate_wrds_liquidity_universe.py --username YOUR_WRDS_USERNAME
 ```
 
+Build or resume yearly partitions of all monthly universe snapshots:
+
+```powershell
+python scripts/build_wrds_crsp_universe_history.py --username YOUR_WRDS_USERNAME
+```
+
+Completed yearly partitions are reused automatically. The combined membership
+history and its manifest remain under Git-ignored local data directories.
+
 Check the current coverage boundary before running a backtest or screener:
 
 ```powershell

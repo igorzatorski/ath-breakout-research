@@ -88,6 +88,124 @@ def build_crsp_liquidity_universe_query() -> str:
     """
 
 
+def build_crsp_universe_history_query() -> str:
+    """Return a yearly-batch query for monthly point-in-time snapshots."""
+    return """
+        WITH sessions AS (
+            SELECT DISTINCT dlycaldt
+            FROM crsp_q_stock.dsf_v2
+            WHERE dlycaldt BETWEEN %(formation_start)s
+                AND (%(formation_end)s::date + INTERVAL '10 days')
+        ),
+        month_ends AS (
+            SELECT MAX(dlycaldt) AS formation_date
+            FROM sessions
+            WHERE dlycaldt <= %(formation_end)s
+            GROUP BY DATE_TRUNC('month', dlycaldt)
+        ),
+        formations AS (
+            SELECT
+                month_ends.formation_date,
+                (
+                    SELECT MIN(sessions.dlycaldt)
+                    FROM sessions
+                    WHERE sessions.dlycaldt > month_ends.formation_date
+                ) AS effective_date
+            FROM month_ends
+        ),
+        eligible_days AS (
+            SELECT
+                permno,
+                ticker,
+                dlycaldt,
+                dlyclose,
+                dlyvol,
+                dlycap,
+                primaryexch
+            FROM crsp_q_stock.dsf_v2
+            WHERE dlycaldt BETWEEN %(lookback_start)s AND %(formation_end)s
+              AND primaryexch IN ('N', 'A', 'Q')
+              AND conditionaltype = 'RW'
+              AND tradingstatusflg = 'A'
+              AND sharetype = 'NS'
+              AND securitytype = 'EQTY'
+              AND securitysubtype = 'COM'
+              AND usincflg = 'Y'
+              AND issuertype = 'CORP'
+              AND dlyclose > 0
+              AND dlyvol >= 0
+        ),
+        liquidity AS (
+            SELECT
+                formations.formation_date,
+                formations.effective_date,
+                eligible_days.permno,
+                COUNT(*) AS observation_count,
+                PERCENTILE_CONT(0.5) WITHIN GROUP (
+                    ORDER BY eligible_days.dlyclose * eligible_days.dlyvol
+                ) AS median_dollar_volume
+            FROM formations
+            JOIN eligible_days
+              ON eligible_days.dlycaldt BETWEEN
+                 (formations.formation_date - INTERVAL '92 days')
+                 AND formations.formation_date
+            WHERE formations.effective_date IS NOT NULL
+            GROUP BY
+                formations.formation_date,
+                formations.effective_date,
+                eligible_days.permno
+            HAVING COUNT(*) >= %(minimum_observations)s
+        ),
+        latest AS (
+            SELECT DISTINCT ON (liquidity.formation_date, eligible_days.permno)
+                liquidity.formation_date,
+                liquidity.effective_date,
+                eligible_days.permno,
+                eligible_days.ticker,
+                eligible_days.dlyclose AS last_price,
+                eligible_days.dlycap AS market_cap,
+                eligible_days.primaryexch AS primary_exchange,
+                liquidity.median_dollar_volume,
+                liquidity.observation_count
+            FROM liquidity
+            JOIN eligible_days
+              ON eligible_days.permno = liquidity.permno
+             AND eligible_days.dlycaldt <= liquidity.formation_date
+             AND eligible_days.dlycaldt >=
+                 (liquidity.formation_date - INTERVAL '92 days')
+            ORDER BY
+                liquidity.formation_date,
+                eligible_days.permno,
+                eligible_days.dlycaldt DESC
+        ),
+        ranked AS (
+            SELECT
+                *,
+                ROW_NUMBER() OVER (
+                    PARTITION BY formation_date
+                    ORDER BY median_dollar_volume DESC, market_cap DESC, permno
+                ) AS rank
+            FROM latest
+            WHERE last_price >= %(minimum_price)s
+              AND market_cap > 0
+        )
+        SELECT
+            formation_date,
+            effective_date,
+            rank,
+            permno,
+            ticker,
+            median_dollar_volume,
+            observation_count,
+            last_price,
+            market_cap,
+            primary_exchange
+        FROM ranked
+        WHERE rank <= %(universe_size)s
+        ORDER BY formation_date, rank
+    """
+
+
 def download_crsp_liquidity_universe(
     connection,
     lookback_start: date | str,
@@ -121,6 +239,63 @@ def download_crsp_liquidity_universe(
         effective_date=effective_date,
         maximum_size=universe_size,
     )
+
+
+def download_crsp_universe_history_batch(
+    connection,
+    lookback_start: date | str,
+    formation_start: date | str,
+    formation_end: date | str,
+    universe_size: int = 3_000,
+    minimum_observations: int = 40,
+    minimum_price: float = 5.0,
+) -> pd.DataFrame:
+    """Download one year-like batch of monthly universe snapshots."""
+    raw_data = connection.raw_sql(
+        build_crsp_universe_history_query(),
+        params={
+            "lookback_start": str(lookback_start),
+            "formation_start": str(formation_start),
+            "formation_end": str(formation_end),
+            "minimum_observations": minimum_observations,
+            "minimum_price": minimum_price,
+            "universe_size": universe_size,
+        },
+        date_cols=["formation_date", "effective_date"],
+    )
+    return normalize_crsp_universe_history(raw_data, maximum_size=universe_size)
+
+
+def normalize_crsp_universe_history(
+    raw_data: pd.DataFrame,
+    maximum_size: int,
+) -> pd.DataFrame:
+    """Normalize multiple monthly universe snapshots returned by WRDS."""
+    required = set(CRSP_UNIVERSE_COLUMNS) - {"security_id", "source"}
+    missing = sorted(required - set(raw_data.columns))
+    if missing:
+        raise ValueError(f"Missing CRSP universe-history columns: {', '.join(missing)}")
+
+    data = raw_data[list(required)].copy()
+    for column in ("formation_date", "effective_date"):
+        data[column] = pd.to_datetime(data[column]).dt.normalize()
+    data["permno"] = pd.to_numeric(data["permno"], errors="raise").astype("Int64")
+    data["rank"] = pd.to_numeric(data["rank"], errors="raise").astype(int)
+    data["ticker"] = data["ticker"].astype("string")
+    for column in (
+        "median_dollar_volume",
+        "observation_count",
+        "last_price",
+        "market_cap",
+    ):
+        data[column] = pd.to_numeric(data[column], errors="coerce")
+    data["security_id"] = data["permno"].astype(str)
+    data["source"] = "CRSP CIZ quarterly"
+    data = data[CRSP_UNIVERSE_COLUMNS].sort_values(
+        ["formation_date", "rank"]
+    ).reset_index(drop=True)
+    validate_crsp_universe_history(data, maximum_size=maximum_size)
+    return data
 
 
 def normalize_crsp_liquidity_universe(
@@ -184,3 +359,13 @@ def validate_crsp_liquidity_universe(
         raise ValueError("CRSP universe must become effective after formation")
     if (data["median_dollar_volume"] < 0).any():
         raise ValueError("CRSP median dollar volume cannot be negative")
+
+
+def validate_crsp_universe_history(data: pd.DataFrame, maximum_size: int) -> None:
+    """Validate every point-in-time snapshot in a universe history."""
+    if data.empty:
+        return
+    if data.duplicated(["formation_date", "permno"]).any():
+        raise ValueError("Duplicate PERMNO values found within a CRSP snapshot")
+    for _, snapshot in data.groupby("formation_date", sort=True):
+        validate_crsp_liquidity_universe(snapshot.reset_index(drop=True), maximum_size)
