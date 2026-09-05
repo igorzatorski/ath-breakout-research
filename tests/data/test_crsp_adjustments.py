@@ -13,6 +13,8 @@ def test_applies_crsp_price_and_share_factors_in_documented_directions() -> None
             "close": [404.0, 102.0],
             "volume": [25.0, 100.0],
             "shares_outstanding": [4_000.0, 16_000.0],
+            "ordinary_dividend": [4.0, 0.0],
+            "nonordinary_dividend": [2.0, 0.0],
             "price_adjustment_factor": [4.0, 1.0],
             "share_adjustment_factor": [4.0, 1.0],
         }
@@ -26,6 +28,8 @@ def test_applies_crsp_price_and_share_factors_in_documented_directions() -> None
     assert result["comparable_close"].tolist() == [101.0, 102.0]
     assert result["comparable_volume"].tolist() == [100.0, 100.0]
     assert result["comparable_shares_outstanding"].tolist() == [16_000.0, 16_000.0]
+    assert result["comparable_ordinary_dividend"].tolist() == [1.0, 0.0]
+    assert result["comparable_nonordinary_dividend"].tolist() == [0.5, 0.0]
 
 
 @pytest.mark.parametrize("factor", [0.0, -1.0, None])
@@ -38,6 +42,8 @@ def test_rejects_invalid_price_factor_when_price_exists(factor) -> None:
             "close": [100.0],
             "volume": [10.0],
             "shares_outstanding": [1_000.0],
+            "ordinary_dividend": [0.0],
+            "nonordinary_dividend": [0.0],
             "price_adjustment_factor": [factor],
             "share_adjustment_factor": [1.0],
         }
@@ -56,6 +62,8 @@ def test_does_not_modify_source_data() -> None:
             "close": [100.0],
             "volume": [10.0],
             "shares_outstanding": [1_000.0],
+            "ordinary_dividend": [0.0],
+            "nonordinary_dividend": [0.0],
             "price_adjustment_factor": [1.0],
             "share_adjustment_factor": [1.0],
         }

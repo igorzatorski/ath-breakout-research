@@ -57,6 +57,16 @@ implementation must verify:
 5. a ticker change under one `PERMNO`;
 6. a delisted security.
 
+The bounded live validation currently covers items 2-4: Apple's 2020 split,
+Apple's 2025 ordinary cash dividends, and one 2025 non-ordinary distribution.
+Identity changes and delistings remain separate milestones.
+
+CRSP return components remain separate: `total_return` maps to `DlyRet`,
+`return_ex_distributions` maps to the price return `DlyRetx`, and
+`income_return` maps to `DlyRetI`. Ordinary and non-ordinary distribution
+amounts are never inferred from the difference between returns. For available
+components, CIZ uses the additive identity `DlyRet = DlyRetx + DlyRetI`.
+
 ## Point-in-time universe boundary
 
 The existing `in_current_universe` registry flag cannot be used by the CRSP

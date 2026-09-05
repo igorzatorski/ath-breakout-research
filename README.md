@@ -111,6 +111,13 @@ The script saves the local validation sample under the Git-ignored
 `data/processed/wrds_samples/` directory and prints checks rather than price
 observations.
 
+Validate daily return components and both ordinary and non-ordinary
+distribution handling:
+
+```powershell
+python scripts/validate_wrds_distributions.py --username YOUR_WRDS_USERNAME
+```
+
 The scripts first check Windows Credential Manager and otherwise let the WRDS
 client request the account password interactively. A connection may trigger a
 Duo Mobile push. Do not store the password in this repository. Raw licensed

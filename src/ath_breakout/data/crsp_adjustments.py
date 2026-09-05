@@ -43,6 +43,13 @@ def add_crsp_comparable_values(data: pd.DataFrame) -> pd.DataFrame:
     ):
         result[comparable_column] = result[raw_column] / price_factor
 
+    result["comparable_ordinary_dividend"] = (
+        result["ordinary_dividend"] / price_factor
+    )
+    result["comparable_nonordinary_dividend"] = (
+        result["nonordinary_dividend"] / price_factor
+    )
+
     result["comparable_volume"] = result["volume"] * share_factor
     result["comparable_shares_outstanding"] = (
         result["shares_outstanding"] * share_factor
