@@ -7,6 +7,85 @@ import ath_breakout.backtesting.crsp_inputs as crsp_inputs
 from ath_breakout.backtesting.crsp_inputs import load_crsp_point_in_time_inputs
 
 
+def test_progress_reports_elapsed_eta_and_estimated_total(monkeypatch) -> None:
+    monkeypatch.setattr(crsp_inputs.time, "monotonic", lambda: 130.0)
+
+    values = crsp_inputs._progress_values(25, 100, 100.0)
+
+    assert values["elapsed"] == "0m 30s"
+    assert values["eta"] == "1m 30s"
+    assert values["total"] == "2m 00s"
+
+
+def test_progress_table_renders_all_stages(capsys, monkeypatch) -> None:
+    monkeypatch.setattr(crsp_inputs.time, "monotonic", lambda: 130.0)
+    table = crsp_inputs._ProgressTable()
+
+    table.update("Scanning", 25, 100, 100.0)
+
+    output = capsys.readouterr().out
+    assert "| Stage" in output
+    assert "| Scanning" in output
+    assert "| Loading" in output
+    assert "| Preparing" in output
+    assert "2m 00s" in output
+
+
+def test_prepared_input_cache_reuses_exact_result(tmp_path, monkeypatch) -> None:
+    strategy_directory = tmp_path / "strategy"
+    strategy_directory.mkdir()
+    _strategy_rows().to_parquet(
+        strategy_directory / "strategy_2020.parquet", index=False
+    )
+    universe_file = tmp_path / "universe.parquet"
+    pd.DataFrame(
+        {
+            "permno": [1, 2],
+            "formation_date": ["2018-12-31", "2018-12-31"],
+            "effective_date": ["2019-01-01", "2019-01-01"],
+        }
+    ).to_parquet(universe_file, index=False)
+    delistings_file = tmp_path / "delistings.parquet"
+    pd.DataFrame({"permno": [], "delisting_return": []}).to_parquet(
+        delistings_file, index=False
+    )
+    monkeypatch.setattr(
+        crsp_inputs,
+        "build_security_snapshot",
+        lambda data, scan_date, benchmark_data=None, **kwargs: {
+            "setup_state": "fresh_breakout",
+            "ticker": str(data.iloc[-1]["ticker"]),
+            "setup_score": 80.0,
+            "breakout_quality_score": 70.0,
+            "close": float(data.iloc[-1]["close"]),
+            "prior_ath": 100.0,
+        },
+    )
+    arguments = (
+        strategy_directory, universe_file, date(2020, 1, 1), date(2020, 1, 6)
+    )
+    options = {
+        "delistings_file": delistings_file,
+        "cache_directory": tmp_path / "cache",
+    }
+
+    first = load_crsp_point_in_time_inputs(*arguments, **options)
+    monkeypatch.setattr(
+        crsp_inputs,
+        "_find_pit_breakout_permnos",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("cache miss")
+        ),
+    )
+    second = load_crsp_point_in_time_inputs(*arguments, **options)
+
+    assert first[0].keys() == second[0].keys()
+    for security_id in first[0]:
+        pd.testing.assert_frame_equal(first[0][security_id], second[0][security_id])
+    pd.testing.assert_frame_equal(first[1], second[1])
+    pd.testing.assert_frame_equal(first[2], second[2])
+
+
 def _strategy_rows() -> pd.DataFrame:
     dates = pd.date_range("2020-01-01", periods=6, freq="D")
     rows = []

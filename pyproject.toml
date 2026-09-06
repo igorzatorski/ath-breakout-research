@@ -35,6 +35,7 @@ where = ["src"]
 testpaths = ["tests"]
 addopts = "-ra"
 pythonpath = ["."]
+cache_dir = "data/cache/pytest"
 
 [tool.ruff]
 target-version = "py311"

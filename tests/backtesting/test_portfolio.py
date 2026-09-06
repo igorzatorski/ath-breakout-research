@@ -99,7 +99,18 @@ def test_tracks_equity_exposure_drawdown_and_benchmark() -> None:
 
     assert result.equity["exposure"].between(0, 1).all()
     assert result.equity["drawdown"].min() < 0
+    assert "benchmark_drawdown" in result.equity
+    assert "benchmark_daily_return" in result.equity
     assert result.summary["benchmark_total_return_pct"] == pytest.approx(0.05)
+    assert result.summary["benchmark_annualized_volatility"] > 0
+    assert result.summary["benchmark_sharpe_ratio_zero_rate"] > 0
+    assert result.summary["benchmark_maximum_drawdown"] <= 0
+    assert "beta_to_benchmark" in result.summary
+    assert "annualized_alpha_zero_rate" in result.summary
+    assert result.summary["annualized_alpha_hac_ci_lower"] <= result.summary["annualized_alpha_hac"]
+    assert result.summary["annualized_alpha_hac_ci_upper"] >= result.summary["annualized_alpha_hac"]
+    assert "alpha_hac_t_stat" in result.summary
+    assert "information_ratio" in result.summary
 
 
 def test_closes_position_using_crsp_delisting_return() -> None:

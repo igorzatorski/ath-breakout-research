@@ -28,14 +28,19 @@ signal definitions to both paths.
 - multi-asset CRSP backtester with next-session execution, costs, position
   limits, delisting exits, SPY benchmark, CSV results, terminal report, and an
   interactive Plotly dashboard;
+- compact strategy/benchmark statistics including volatility, Sharpe, drawdown,
+  beta, alpha, tracking error, information ratio, Sortino, and Calmar;
+- dashboard panels for normalized log-scale growth, both drawdowns, exposure,
+  rolling 21-session volatility, and monthly/yearly strategy-benchmark returns;
 - validation of manifests, source fingerprints, Parquet row counts, and actual
   partition date bounds;
-- 232 passing automated tests at the latest local verification.
+- 235 passing automated tests at the latest local verification.
 
 The full CRSP preparation stage was reduced from about 24 minutes to about
-8 minutes on the development machine. An exact regression comparison confirmed
-that the optimization did not change candidates, events, trades, the equity
-curve, or summary statistics.
+9 minutes on a cold run on the development machine. A persistent prepared-input
+cache reduces an otherwise identical full-period rerun to about 34 seconds.
+Exact regression comparisons confirmed that the optimizations did not change
+candidates, events, trades, the equity curve, or annual performance outputs.
 
 ### Current limitations
 
@@ -70,6 +75,18 @@ Press Enter in `run_backtest.py` to use the first supported SPY/CRSP date and
 the end date recorded by the local CRSP manifest. Acquisition, rebuilding,
 auditing, and compatibility commands live under `scripts/maintenance/` and
 `scripts/internal/`.
+
+The first run for a period stores prepared point-in-time prices and ranked
+signals under the ignored `data/cache/backtesting/` directory. Later runs with
+the same data, dates, and signal definition reuse that cache. Portfolio settings
+such as capital, costs, weights, and position limits can change without
+rebuilding signals. Changes to CRSP partitions, universe or delisting files,
+benchmark observations, feature code, dates, or signal-loader code create a new
+cache key automatically. To deliberately rebuild the same key, run:
+
+```powershell
+python scripts/run_backtest.py --start 1993-01-29 --end 2026-06-30 --rebuild-cache
+```
 
 ## Environment
 
@@ -155,7 +172,8 @@ outputs/backtests/crsp/<START>_<END>/run_<TIMESTAMP>/
 ```
 
 It contains `summary.csv`, `equity_curve.csv`, `trades.csv`, `events.csv`,
-`ranked_candidates.csv`, and `interactive_dashboard.html`. The current valid
+`ranked_candidates.csv`, `annual_performance.csv`, and
+`interactive_dashboard.html`. The current valid
 full-period run covers 1993-01-29 through 2026-06-30. Runs extending beyond CRSP
 coverage, or predating accounting version 2, must not be used for conclusions.
 
@@ -167,12 +185,13 @@ coverage, or predating accounting version 2, must not be used for conclusions.
 - manually reconcile representative entries, exits, delistings, returns, and costs;
 - add experiment names, parameter snapshots, data fingerprints, Git commit hash,
   and elapsed time to every run;
-- improve dashboard-first reporting with annual/rolling performance, turnover,
-  exposure, drawdown, and trade-distribution diagnostics.
+- extend dashboard reporting with rolling performance, turnover, and deeper
+  trade-distribution diagnostics.
 
 ### 2. Build the research layer
 
-- cache reusable signals and features for faster iterations;
+- benchmark and refine the persistent prepared-input cache as the research
+  workload grows;
 - define immutable train, validation, and final out-of-sample periods;
 - add walk-forward and market-regime evaluation;
 - analyze feature deciles and forward-return distributions;

@@ -5,6 +5,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
+import numpy as np
 
 from ath_breakout.data.storage import load_security_data, security_file_path
 from ath_breakout.screening.features import build_security_snapshot
@@ -370,6 +371,13 @@ def run_portfolio_backtest(
     equity["daily_return"] = equity["equity"].pct_change().fillna(0.0)
     equity["equity_peak"] = equity["equity"].cummax()
     equity["drawdown"] = equity["equity"] / equity["equity_peak"] - 1
+    equity["benchmark_daily_return"] = (
+        equity["benchmark_equity"].pct_change(fill_method=None).fillna(0.0)
+    )
+    equity["benchmark_peak"] = equity["benchmark_equity"].cummax()
+    equity["benchmark_drawdown"] = (
+        equity["benchmark_equity"] / equity["benchmark_peak"] - 1
+    )
     trades_table = pd.DataFrame(trades)
     events_table = pd.DataFrame(events)
     summary = _build_summary(
@@ -504,6 +512,35 @@ def _build_summary(
     cagr = (final_equity / capital) ** (1 / years) - 1 if years > 0 else 0.0
     benchmark_cagr = (benchmark_final / capital) ** (1 / years) - 1 if years > 0 else 0.0
     daily_std = float(equity["daily_return"].std())
+    benchmark_returns = equity.loc[
+        equity["benchmark_equity"].notna(), "benchmark_daily_return"
+    ]
+    benchmark_std = float(benchmark_returns.std())
+    aligned = equity.loc[
+        equity["benchmark_equity"].notna(),
+        ["daily_return", "benchmark_daily_return"],
+    ]
+    benchmark_variance = float(aligned["benchmark_daily_return"].var())
+    beta = (
+        float(aligned.cov().loc["daily_return", "benchmark_daily_return"])
+        / benchmark_variance
+        if benchmark_variance > 0
+        else float("nan")
+    )
+    alpha = float(
+        (aligned["daily_return"] - beta * aligned["benchmark_daily_return"]).mean()
+        * 252
+    ) if pd.notna(beta) else float("nan")
+    alpha_daily, alpha_standard_error, alpha_t_stat = _ols_hac_alpha(
+        aligned["daily_return"].to_numpy(dtype=float),
+        aligned["benchmark_daily_return"].to_numpy(dtype=float),
+    )
+    active_returns = aligned["daily_return"] - aligned["benchmark_daily_return"]
+    tracking_error_daily = float(active_returns.std())
+    downside = equity.loc[equity["daily_return"] < 0, "daily_return"]
+    downside_std = float(downside.std())
+    maximum_drawdown = float(equity["drawdown"].min())
+    average_exposure = float(equity["exposure"].mean())
     wins = float((trades["return_pct"] > 0).mean()) if len(trades) else 0.0
     return {
         "start_date": equity.iloc[0]["date"].date(), "end_date": equity.iloc[-1]["date"].date(),
@@ -511,8 +548,15 @@ def _build_summary(
         "total_return_pct": final_equity / capital - 1, "cagr": cagr,
         "annualized_volatility": daily_std * (252 ** 0.5),
         "sharpe_ratio_zero_rate": float(equity["daily_return"].mean() / daily_std * (252 ** 0.5)) if daily_std > 0 else 0.0,
-        "maximum_drawdown": float(equity["drawdown"].min()),
-        "average_exposure": float(equity["exposure"].mean()),
+        "sortino_ratio_zero_rate": float(
+            equity["daily_return"].mean() / downside_std * (252 ** 0.5)
+        ) if downside_std > 0 else 0.0,
+        "calmar_ratio": cagr / abs(maximum_drawdown) if maximum_drawdown < 0 else float("nan"),
+        "maximum_drawdown": maximum_drawdown,
+        "average_exposure": average_exposure,
+        "exposure_adjusted_cagr_heuristic": (
+            cagr / average_exposure if average_exposure > 0 else float("nan")
+        ),
         "maximum_positions_used": int(equity["open_positions"].max()),
         "maximum_positions": max_positions, "target_position_weight": weight,
         "completed_trades": len(trades), "open_positions_at_end": open_count,
@@ -523,11 +567,62 @@ def _build_summary(
         "benchmark_final_equity": benchmark_final,
         "benchmark_total_return_pct": benchmark_final / capital - 1,
         "benchmark_cagr": benchmark_cagr,
+        "benchmark_annualized_volatility": benchmark_std * (252 ** 0.5),
+        "benchmark_sharpe_ratio_zero_rate": (
+            float(benchmark_returns.mean() / benchmark_std * (252 ** 0.5))
+            if benchmark_std > 0 else 0.0
+        ),
+        "benchmark_maximum_drawdown": float(equity["benchmark_drawdown"].min()),
+        "benchmark_sortino_ratio_zero_rate": (
+            float(benchmark_returns.mean() / benchmark_returns[benchmark_returns < 0].std() * (252 ** 0.5))
+            if float(benchmark_returns[benchmark_returns < 0].std()) > 0 else 0.0
+        ),
+        "benchmark_calmar_ratio": (
+            benchmark_cagr / abs(float(equity["benchmark_drawdown"].min()))
+            if float(equity["benchmark_drawdown"].min()) < 0 else float("nan")
+        ),
+        "beta_to_benchmark": beta,
+        "annualized_alpha_zero_rate": alpha,
+        "annualized_alpha_hac": alpha_daily * 252,
+        "annualized_alpha_hac_standard_error": alpha_standard_error * 252,
+        "annualized_alpha_hac_ci_lower": (alpha_daily - 1.96 * alpha_standard_error) * 252,
+        "annualized_alpha_hac_ci_upper": (alpha_daily + 1.96 * alpha_standard_error) * 252,
+        "alpha_hac_t_stat": alpha_t_stat,
+        "annualized_tracking_error": tracking_error_daily * (252 ** 0.5),
+        "information_ratio": (
+            float(active_returns.mean() / tracking_error_daily * (252 ** 0.5))
+            if tracking_error_daily > 0 else 0.0
+        ),
         "candidate_signals": signals, "signals_skipped_at_capacity": skipped,
         "transaction_cost_bps_per_side": costs,
         "survivorship_warning": survivorship_warning
         or "Current IWV constituents used for all historical dates",
     }
+
+
+def _ols_hac_alpha(
+    strategy_returns: np.ndarray,
+    benchmark_returns: np.ndarray,
+) -> tuple[float, float, float]:
+    """Estimate daily CAPM alpha and a Newey-West standard error."""
+    if len(strategy_returns) < 3 or len(strategy_returns) != len(benchmark_returns):
+        return float("nan"), float("nan"), float("nan")
+    design = np.column_stack([np.ones(len(benchmark_returns)), benchmark_returns])
+    inverse = np.linalg.pinv(design.T @ design)
+    coefficients = inverse @ design.T @ strategy_returns
+    residuals = strategy_returns - design @ coefficients
+    scores = design * residuals[:, None]
+    covariance_sum = scores.T @ scores
+    lag_count = max(1, int(4 * (len(strategy_returns) / 100) ** (2 / 9)))
+    for lag in range(1, min(lag_count, len(strategy_returns) - 1) + 1):
+        weight = 1.0 - lag / (lag_count + 1.0)
+        lag_covariance = scores[lag:].T @ scores[:-lag]
+        covariance_sum += weight * (lag_covariance + lag_covariance.T)
+    covariance = inverse @ covariance_sum @ inverse
+    standard_error = float(np.sqrt(max(covariance[0, 0], 0.0)))
+    alpha = float(coefficients[0])
+    t_stat = alpha / standard_error if standard_error > 0 else float("nan")
+    return alpha, standard_error, t_stat
 
 
 def _print_preparation_progress(completed, total, signals, started_at):

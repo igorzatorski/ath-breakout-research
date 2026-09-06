@@ -5,6 +5,7 @@ import json
 from datetime import date, datetime
 from pathlib import Path
 
+from ath_breakout.backtesting.crsp_inputs import DEFAULT_INPUT_CACHE
 from ath_breakout.backtesting.crsp_inputs import load_crsp_point_in_time_inputs
 from ath_breakout.backtesting.portfolio import run_portfolio_backtest
 from ath_breakout.backtesting.reporting import print_portfolio_report
@@ -30,6 +31,10 @@ def parse_arguments(arguments=None):
     parser.add_argument("--max-securities", type=int,
                         help="Diagnostic sorted PERMNO subset, NOT a liquidity universe")
     parser.add_argument("--no-open", action="store_true")
+    parser.add_argument(
+        "--rebuild-cache", action="store_true",
+        help="Recompute prepared prices and signals even when a valid cache exists",
+    )
     return parser.parse_args(arguments)
 
 
@@ -63,6 +68,8 @@ def main(arguments=None):
         show_progress=True,
         retain_all_histories=False,
         skip_continuations=True,
+        cache_directory=DEFAULT_INPUT_CACHE,
+        refresh_cache=args.rebuild_cache,
     )
     result = run_portfolio_backtest(
         histories, candidates, benchmark, effective_start, args.end,
