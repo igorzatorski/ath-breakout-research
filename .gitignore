@@ -8,6 +8,7 @@ __pycache__/
 # Virtual environments
 .venv/
 venv/
+.uv-cache/
 
 # Packaging and coverage output
 build/

@@ -42,21 +42,44 @@ The current research MVP includes:
 - a 33-position, next-open portfolio simulator with transaction costs;
 - terminal statistics and an interactive Plotly backtest dashboard.
 
-Install the project and its development tools once inside the active
-environment:
+## Reproducible development environment
+
+The project targets Python 3.11 and uses `uv` to create a repository-local
+`.venv` and reproduce the dependency versions recorded in `uv.lock`. Install
+all development and WRDS dependencies with one command from the repository
+root:
 
 ```powershell
-python -m pip install -e ".[dev]"
+uv sync --all-extras
 ```
+
+Run project commands through `uv run`; activation of `.venv` is not required:
+
+```powershell
+uv run pytest -q
+uv run python scripts/check_wrds_connection.py --username YOUR_WRDS_USERNAME
+```
+
+After changing dependencies, regenerate and verify the lock file with:
+
+```powershell
+uv lock
+uv sync --all-extras --locked
+```
+
+The `.venv` and `.uv-cache` directories are local runtime state and are
+excluded from Git. GitHub Actions installs from the committed lock file and
+runs lint and tests for every push and pull request.
 
 ## Command cheat sheet
 
 ### WRDS/CRSP connection check
 
-Install the optional WRDS client in the active environment:
+The WRDS client is included when the environment is installed with
+`uv sync --all-extras`. To install only the base project and WRDS extra:
 
 ```powershell
-python -m pip install -e ".[wrds]"
+uv sync --extra wrds
 ```
 
 On a private Windows account, the password can optionally be stored in Windows

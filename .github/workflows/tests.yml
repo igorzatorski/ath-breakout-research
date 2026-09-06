@@ -1,0 +1,23 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Install locked environment
+        run: uv sync --all-extras --locked
+      - name: Check code quality
+        run: uv run ruff check src scripts tests
+      - name: Run tests
+        run: uv run pytest -q

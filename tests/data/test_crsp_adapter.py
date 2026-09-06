@@ -6,7 +6,6 @@ import pytest
 from ath_breakout.data.adapters.crsp import (
     CRSP_DAILY_COLUMNS,
     CRSP_DAILY_SOURCE_COLUMNS,
-    build_crsp_daily_query,
     download_crsp_daily,
     normalize_crsp_daily,
     stream_crsp_daily,
