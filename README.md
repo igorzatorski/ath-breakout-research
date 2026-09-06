@@ -178,6 +178,16 @@ partitions, the pre-1993 ATH seed, and detailed delisting outcomes:
 python -u scripts/download_wrds_crsp_daily_history.py --username YOUR_WRDS_USERNAME
 ```
 
+Audit every local yearly partition, its manifest row counts, key ordering,
+OHLC consistency, delisting outcomes, and the pre-period ATH seed:
+
+```powershell
+python -u scripts/audit_crsp_history_quality.py
+```
+
+The audit streams Parquet batches to bound memory use. Its metadata-only summary
+and per-year report are written under the Git-ignored `data/state/` directory.
+
 Check the current coverage boundary before running a backtest or screener:
 
 ```powershell
