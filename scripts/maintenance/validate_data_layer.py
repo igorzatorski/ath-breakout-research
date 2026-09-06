@@ -23,19 +23,43 @@ def validate(root=ROOT):
     if set(sources) != {p["year"] for p in processed.get("partitions", [])}:
         errors.append("Raw and processed years differ")
     for manifest in (raw, processed):
+        observed_dates = []
         for item in manifest.get("partitions", []):
             path = Path(item["path"])
             try:
-                if pq.read_metadata(path).num_rows != item["rows"]:
+                metadata = pq.read_metadata(path)
+                if metadata.num_rows != item["rows"]:
                     errors.append(f"Row count mismatch: {path.name}")
+                if "date" not in metadata.schema.names:
+                    errors.append(f"Missing date column: {path.name}")
+                    continue
+                date_index = metadata.schema.names.index("date")
+                date_stats = [
+                    metadata.row_group(index).column(date_index).statistics
+                    for index in range(metadata.num_row_groups)
+                ]
+                date_stats = [stats for stats in date_stats if stats is not None]
+                if not date_stats:
+                    errors.append(f"Missing date statistics: {path.name}")
+                else:
+                    observed_dates.extend(
+                        [min(stats.min for stats in date_stats), max(stats.max for stats in date_stats)]
+                    )
                 if manifest is raw and path.stat().st_mtime_ns > quality_path.stat().st_mtime_ns:
                     errors.append(f"Quality audit predates raw partition: {path.name}")
                 if manifest is processed:
                     source = Path(sources[item["year"]]["path"])
                     if item.get("source_mtime_ns") != source.stat().st_mtime_ns:
                         errors.append(f"Processed partition lacks current source fingerprint: {path.name}")
-            except (OSError, KeyError) as exc:
+            except (OSError, KeyError, ValueError) as exc:
                 errors.append(f"Unreadable partition {path.name}: {exc}")
+        if observed_dates:
+            observed_end = max(observed_dates).date().isoformat()
+            if manifest.get("end_date") and manifest["end_date"] > observed_end:
+                errors.append(
+                    f"{manifest.get('source_manifest', 'CRSP')} claims {manifest['end_date']} "
+                    f"but partitions end at {observed_end}"
+                )
     seed = Path(processed.get("ath_seed", "missing"))
     if not seed.is_file() or processed.get("seed_mtime_ns") != seed.stat().st_mtime_ns:
         errors.append("Processed ATH seed fingerprint is stale or missing")

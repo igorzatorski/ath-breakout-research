@@ -100,6 +100,10 @@ def load_crsp_point_in_time_inputs(
     if start_date > end_date:
         raise ValueError("start_date must not exceed end_date")
     universe = _membership_intervals(pd.read_parquet(universe_history_file))
+    memberships = {
+        int(permno): group.reset_index(drop=True)
+        for permno, group in universe.groupby("permno", sort=False)
+    }
     start_timestamp = pd.Timestamp(start_date).normalize()
     end_timestamp = pd.Timestamp(end_date).normalize()
     overlaps = universe[
@@ -122,7 +126,7 @@ def load_crsp_point_in_time_inputs(
     candidate_permnos = _find_pit_breakout_permnos(
         yearly_files,
         selected_permnos,
-        universe,
+        memberships,
         start_timestamp,
         end_timestamp,
         show_progress=show_progress,
@@ -133,6 +137,15 @@ def load_crsp_point_in_time_inputs(
     histories: dict[int, list[pd.DataFrame]] = {
         permno: [] for permno in history_permnos
     }
+    prepared_benchmark = None
+    if benchmark_data is not None:
+        prepared_benchmark = benchmark_data.copy()
+        prepared_benchmark["date"] = pd.to_datetime(
+            prepared_benchmark["date"]
+        ).dt.normalize()
+        prepared_benchmark = prepared_benchmark.sort_values("date").reset_index(
+            drop=True
+        )
     if history_permnos:
         warmup_start = None  # Snapshot scores depend on all prior history.
         required_columns = [
@@ -173,7 +186,7 @@ def load_crsp_point_in_time_inputs(
         if data.duplicated(["permno", "date"]).any():
             raise ValueError("Duplicate CRSP security dates across partitions")
         data = data.reset_index(drop=True)
-        membership = universe[universe["permno"] == permno]
+        membership = memberships[permno]
         data["in_pit_universe"] = _active_on_dates(data["date"], membership).to_numpy()
         simulation_columns = [*SIMULATION_COLUMNS, "total_return", "nominal_close", "nominal_open"]
         simulation_columns = [
@@ -202,7 +215,11 @@ def load_crsp_point_in_time_inputs(
         for row_number in signal_rows.index:
             signal_date = data.loc[row_number, "date"].date()
             snapshot = build_security_snapshot(
-                data.loc[:row_number], signal_date, benchmark_data=benchmark_data
+                data.loc[:row_number],
+                signal_date,
+                benchmark_data=prepared_benchmark,
+                data_is_prepared=True,
+                benchmark_is_prepared=prepared_benchmark is not None,
             )
             if snapshot is not None and (rank_all_setups or snapshot["setup_state"] == "fresh_breakout"):
                 candidate_rows.append({
@@ -286,7 +303,7 @@ def _read_strategy_partition(
 def _find_pit_breakout_permnos(
     yearly_files: list[Path],
     selected_permnos: list[int],
-    universe: pd.DataFrame,
+    memberships: dict[int, pd.DataFrame],
     start_timestamp: pd.Timestamp,
     end_timestamp: pd.Timestamp,
     show_progress: bool = False,
@@ -320,7 +337,7 @@ def _find_pit_breakout_permnos(
     result = set()
     for permno, rows in breakouts.groupby("permno", sort=False):
         permno = int(permno)
-        membership = universe[universe["permno"] == permno]
+        membership = memberships[permno]
         if _active_on_dates(rows["date"], membership).any():
             result.add(permno)
     return result

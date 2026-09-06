@@ -69,6 +69,30 @@ def test_builds_ranking_ready_security_snapshot() -> None:
     assert 0 <= result["breakout_quality_score"] <= 100
 
 
+def test_prepared_snapshot_path_matches_standard_path() -> None:
+    data = make_processed_prices()
+    benchmark = data.copy()
+
+    standard = build_security_snapshot(
+        data,
+        date(2024, 12, 3),
+        benchmark_data=benchmark,
+    )
+    prepared = build_security_snapshot(
+        data,
+        date(2024, 12, 3),
+        benchmark_data=benchmark,
+        data_is_prepared=True,
+        benchmark_is_prepared=True,
+    )
+
+    pd.testing.assert_series_equal(
+        pd.Series(prepared),
+        pd.Series(standard),
+        check_names=False,
+    )
+
+
 def test_nominal_price_and_liquidity_are_not_adjusted_price_filters():
     data = make_processed_prices()
     data["nominal_close"] = 4.0

@@ -69,19 +69,31 @@ def build_security_snapshot(
     maximum_sma_50_extension: float = 0.15,
     minimum_atr_20_pct: float = 0.005,
     maximum_atr_20_pct: float = 0.05,
+    data_is_prepared: bool = False,
+    benchmark_is_prepared: bool = False,
 ) -> dict | None:
     """Build one ranking-ready snapshot at a completed session close."""
-    history = data.copy()
-    history["date"] = pd.to_datetime(history["date"])
-    history = history[history["date"].dt.date <= scan_date]
-    history = history.sort_values("date").reset_index(drop=True)
+    scan_timestamp = pd.Timestamp(scan_date)
+    if data_is_prepared:
+        history = data
+    else:
+        history = data.copy()
+        history["date"] = pd.to_datetime(history["date"])
+        history = history[history["date"] <= scan_timestamp]
+        history = history.sort_values("date").reset_index(drop=True)
 
     if benchmark_data is not None:
-        benchmark_data = benchmark_data.copy()
-        benchmark_data["date"] = pd.to_datetime(benchmark_data["date"])
-        benchmark_data = benchmark_data[
-            benchmark_data["date"].dt.date <= scan_date
-        ].sort_values("date").reset_index(drop=True)
+        if benchmark_is_prepared:
+            cutoff = benchmark_data["date"].searchsorted(
+                scan_timestamp, side="right"
+            )
+            benchmark_data = benchmark_data.iloc[:cutoff]
+        else:
+            benchmark_data = benchmark_data.copy()
+            benchmark_data["date"] = pd.to_datetime(benchmark_data["date"])
+            benchmark_data = benchmark_data[
+                benchmark_data["date"] <= scan_timestamp
+            ].sort_values("date").reset_index(drop=True)
 
     if len(history) == 0:
         return None

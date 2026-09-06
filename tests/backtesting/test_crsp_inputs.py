@@ -62,7 +62,7 @@ def test_uses_effective_membership_for_historical_candidates(tmp_path, monkeypat
     monkeypatch.setattr(
         crsp_inputs,
         "build_security_snapshot",
-        lambda data, scan_date, benchmark_data=None: {
+        lambda data, scan_date, benchmark_data=None, **kwargs: {
             "setup_state": "fresh_breakout",
             "ticker": str(data.iloc[-1]["ticker"]),
             "setup_score": 80.0,

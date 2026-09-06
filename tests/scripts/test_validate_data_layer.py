@@ -13,7 +13,7 @@ def test_gate_detects_changed_raw_partition(tmp_path):
     spy = tmp_path / "data/processed/features/SPY.parquet"
     spy.parent.mkdir(parents=True)
     for p in (raw, derived, seed, universe, spy):
-        pd.DataFrame({"value": [1]}).to_parquet(p)
+        pd.DataFrame({"date": pd.to_datetime(["2024-01-01"]), "value": [1]}).to_parquet(p)
     manifests = {
         "crsp_daily_history_manifest.json": {"status": "complete", "daily_rows": 1, "partitions": [{"year": 2024, "path": str(raw), "rows": 1}]},
         "crsp_strategy_history_manifest.json": {"status": "complete", "ath_seed": str(seed), "seed_mtime_ns": seed.stat().st_mtime_ns, "partitions": [{"year": 2024, "path": str(derived), "rows": 1, "source_mtime_ns": raw.stat().st_mtime_ns}]},
