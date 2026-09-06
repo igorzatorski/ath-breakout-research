@@ -25,8 +25,9 @@ def print_portfolio_report(
         f"cost {summary['transaction_cost_bps_per_side']:.1f} bps per side"
     )
     print(f"WARNING: {summary['survivorship_warning']}")
+    benchmark_name = summary.get("benchmark_name", "S&P 500")
 
-    _heading("EQUITY CURVE: STRATEGY (S) VS S&P 500 (B)")
+    _heading(f"EQUITY CURVE: STRATEGY (S) VS {benchmark_name} (B)")
     print(
         _two_series_chart(
             equity["equity"], equity["benchmark_equity"],
@@ -53,8 +54,8 @@ def print_portfolio_report(
 
     statistics = [
         ["Initial capital", _money(summary["initial_capital"]), "Final equity", _money(summary["final_equity"])],
-        ["Total return", _percent(summary["total_return_pct"]), "S&P 500 return", _percent(summary["benchmark_total_return_pct"])],
-        ["CAGR", _percent(summary["cagr"]), "S&P 500 CAGR", _percent(summary["benchmark_cagr"])],
+        ["Total return", _percent(summary["total_return_pct"]), f"{benchmark_name} return", _percent(summary["benchmark_total_return_pct"])],
+        ["CAGR", _percent(summary["cagr"]), f"{benchmark_name} CAGR", _percent(summary["benchmark_cagr"])],
         ["Annual volatility", _percent(summary["annualized_volatility"]), "Sharpe (cash rate 0%)", f"{summary['sharpe_ratio_zero_rate']:.2f}"],
         ["Maximum drawdown", _percent(summary["maximum_drawdown"]), "Average exposure", _percent(summary["average_exposure"])],
         ["Completed trades", summary["completed_trades"], "Open positions at end", summary["open_positions_at_end"]],
@@ -144,7 +145,8 @@ def _write_interactive_dashboard(equity, events, summary, output_file):
         subplot_titles=("Equity curve", "Drawdown", "Capital exposure", "Daily PnL"),
     )
     figure.add_trace(go.Scatter(x=equity["date"], y=equity["equity"], name="Strategy", line={"width": 2.5}), row=1, col=1)
-    figure.add_trace(go.Scatter(x=equity["date"], y=equity["benchmark_equity"], name="S&P 500 (SPY)", line={"width": 2}), row=1, col=1)
+    benchmark_name = summary.get("benchmark_name", "S&P 500")
+    figure.add_trace(go.Scatter(x=equity["date"], y=equity["benchmark_equity"], name=benchmark_name, line={"width": 2}), row=1, col=1)
     if len(events) > 0:
         event_equity = events.merge(equity[["date", "equity"]], on="date", how="left")
         for event_name, color, symbol in [("entry", "green", "triangle-up"), ("exit", "red", "triangle-down")]:
@@ -179,11 +181,13 @@ def _write_interactive_dashboard(equity, events, summary, output_file):
 def _two_series_chart(first, second, width, height):
     first_values = _sample(first, width)
     second_values = _sample(second, width)
-    minimum = min(min(first_values), min(second_values))
-    maximum = max(max(first_values), max(second_values))
+    valid = [v for v in first_values + second_values if pd.notna(v)]
+    minimum, maximum = min(valid), max(valid)
     grid = [[" " for _ in range(width)] for _ in range(height)]
     for symbol, values in [("S", first_values), ("B", second_values)]:
         for x, value in enumerate(values):
+            if pd.isna(value):
+                continue
             y = _row_for_value(value, minimum, maximum, height)
             grid[y][x] = "X" if grid[y][x] != " " else symbol
     lines = []
@@ -208,7 +212,7 @@ def _single_series_chart(values, width, height, symbol):
 
 
 def _sample(values, width):
-    numeric = pd.to_numeric(values, errors="coerce").ffill().bfill()
+    numeric = pd.to_numeric(values, errors="coerce")
     if len(numeric) == 0:
         return [0.0] * width
     indices = [int(i * (len(numeric) - 1) / max(width - 1, 1)) for i in range(width)]

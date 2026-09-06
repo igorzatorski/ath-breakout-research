@@ -5,7 +5,7 @@ import pandas as pd
 import pyarrow as pa
 
 
-SCRIPT = Path("scripts/download_wrds_crsp_daily_history.py")
+SCRIPT = Path("scripts/maintenance/download_wrds_crsp_daily_history.py")
 SPEC = importlib.util.spec_from_file_location("download_crsp_daily_history", SCRIPT)
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None

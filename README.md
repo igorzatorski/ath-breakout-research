@@ -165,7 +165,7 @@ python scripts/validate_wrds_liquidity_universe.py --username YOUR_WRDS_USERNAME
 Build or resume yearly partitions of all monthly universe snapshots:
 
 ```powershell
-python scripts/build_wrds_crsp_universe_history.py --username YOUR_WRDS_USERNAME
+python scripts/maintenance/build_wrds_crsp_universe_history.py --username YOUR_WRDS_USERNAME
 ```
 
 Completed yearly partitions are reused automatically. The combined membership
@@ -175,7 +175,7 @@ After the universe history is complete, download or resume yearly CRSP daily
 partitions, the pre-1993 ATH seed, and detailed delisting outcomes:
 
 ```powershell
-python -u scripts/download_wrds_crsp_daily_history.py --username YOUR_WRDS_USERNAME
+python -u scripts/maintenance/download_wrds_crsp_daily_history.py --username YOUR_WRDS_USERNAME
 ```
 
 Audit every local yearly partition, its manifest row counts, key ordering,
@@ -187,6 +187,16 @@ python -u scripts/audit_crsp_history_quality.py
 
 The audit streams Parquet batches to bound memory use. Its metadata-only summary
 and per-year report are written under the Git-ignored `data/state/` directory.
+
+Build or resume chronological, strategy-ready CRSP partitions after the audit:
+
+```powershell
+python -u scripts/maintenance/build_crsp_strategy_history.py
+```
+
+The builder carries the last 199 closes and the full prior ATH across yearly
+boundaries, so rolling indicators do not reset each January. Use
+`--limit-years 1` for a local performance and size check before a full build.
 
 Check the current coverage boundary before running a backtest or screener:
 
@@ -219,7 +229,7 @@ institutional terms of use.
 Run the complete ranked multi-asset portfolio over the latest five years:
 
 ```powershell
-python scripts/run_portfolio_backtest.py
+python scripts/maintenance/run_portfolio_backtest.py
 ```
 
 When this script is launched with the editor's Run button and no date options,
@@ -236,8 +246,8 @@ available slots by setup score and then breakout-quality score.
 Select an exact period or change transparent assumptions when needed:
 
 ```powershell
-python scripts/run_portfolio_backtest.py --start 2021-01-01 --end 2025-12-31
-python scripts/run_portfolio_backtest.py --capital 50000 --cost-bps 15
+python scripts/maintenance/run_portfolio_backtest.py --start 2021-01-01 --end 2025-12-31
+python scripts/maintenance/run_portfolio_backtest.py --capital 50000 --cost-bps 15
 ```
 
 `--start` is the first session on which the portfolio may accept a signal and
@@ -246,7 +256,7 @@ ATH, moving averages, consolidation features, and ranking. For example, to
 measure from 2017 while retaining all earlier warm-up history:
 
 ```powershell
-python scripts/run_portfolio_backtest.py --start 2017-01-01 --min-setup-score 70
+python scripts/maintenance/run_portfolio_backtest.py --start 2017-01-01 --min-setup-score 70
 ```
 
 An optional ranking floor can be tested with `--min-setup-score`. The default
@@ -257,14 +267,85 @@ validated source of alpha.
 Use `--no-open` to save the interactive HTML dashboard without opening it.
 Results are stored under `outputs/backtests/portfolio/<START>_<END>/`.
 
+### CRSP point-in-time portfolio backtest
+
+The CRSP migration builds strategy-ready yearly partitions from the local
+WRDS extract and reconstructs the eligible universe from the historical
+monthly CRSP liquidity snapshots. Membership is applied using each snapshot's
+effective date, so a security can enter or leave the investable universe during
+the backtest. CRSP PERMNO remains the identifier; tickers are display labels.
+
+Run a small control backtest first:
+
+```powershell
+python -u scripts/run_crsp_portfolio_backtest.py --start 2024-01-02 --end 2024-12-31 --max-securities 10 --no-open
+```
+
+`--max-securities` limits the deterministic PERMNO subset for a quick control
+run. Omit it only after the control run passes; loading all historical CRSP
+partitions is intentionally a longer local operation. The runner first scans
+only breakout flags and PIT membership, then loads ALL available prior history
+for securities that can actually produce a signal. A fixed warm-up changes
+history-dependent scores and must not be used here.
+The runner also passes available delisting returns to the simulator, which
+closes an open
+position at the CRSP terminal return instead of leaving it marked indefinitely.
+Results are stored under `outputs/backtests/crsp/<START>_<END>/<RUN_TIMESTAMP>/`.
+The PERMNO limit is diagnostic only; omit it for the monthly liquidity universe.
+
+The CRSP runner applies total returns exactly once: adjusted prices mark the
+holding, while the multiplier captures only the distribution component relative
+to price return. Held distributions are reinvested at the close; an opening
+exit receives its explicit ex-date distribution in cash. Opening entries do not
+receive the previous holder's distribution. Terminal returns replace that day's
+regular accrual. Missing held terminal returns stop the run; price/distribution
+fallbacks and stale marks are counted in the summary.
+Nominal price and volume drive price/liquidity filters; adjusted values drive
+ATH and moving averages. Older local partitions recover nominal fields using
+their stored CRSP factors without another download.
+NYSE sessions determine the simulation calendar. The backtest benchmark is SPY,
+an investable S&P 500 proxy. SPY begins on 1993-01-22, so benchmark observations
+before that date remain missing while the strategy still runs. No benchmark
+history is fabricated.
+
+Reports created before accounting version 2 are invalid and must be rerun.
+Passing synthetic and small control tests is not full-universe validation.
+
 ### Daily data pipeline
+
+For a live personal end-of-day screen, run:
+
+```powershell
+uv run python scripts/maintenance/run_daily_screen.py
+```
+
+This updates Yahoo data before invoking the shared signal engine. The live
+screener refuses a stale quality-report date and excludes bad or stale stocks.
+Yahoo's repair path requires SciPy, included in the locked environment.
+
+CRSP is the historical research source; Yahoo is the live screening source.
+Their raw histories remain separate. Do not append Yahoo rows to CRSP by ticker:
+PERMNO identity and adjustment bases need an explicit bridge for such a merge.
+Both sources use the same snapshot rules, but prices and available history can
+differ, so boundary signals need cross-checking. CRSP data currently ends at
+2026-06-30; this is local subscription coverage, not live market data.
+
+The live universe currently comes from IWV holdings, while the CRSP backtest
+uses monthly liquidity snapshots. These universes are not identical. The live
+screen ranks candidates; position-specific sell orders additionally require an
+actual holdings ledger with entry dates and the active exit regime. It does not
+place orders. Yahoo is a personal-use, best-effort source, not a guaranteed feed:
+https://ranaroussi.github.io/yfinance/
 
 The daily data workflow has one entry point. It saves or reuses today's IWV
 snapshot, updates every known security through the latest available session,
 rebuilds processed features, and writes the quality report:
 
+The concise command map and source-by-source module audit are in
+`PROJECT_STRUCTURE.md`.
+
 ```powershell
-python scripts/run_data_pipeline.py
+python scripts/maintenance/run_data_pipeline.py
 ```
 
 Use this command for the normal daily update. Existing securities receive only
@@ -277,7 +358,7 @@ building a stale screener. It checks every two minutes. Both limits can be
 changed, for example:
 
 ```powershell
-python scripts/run_data_pipeline.py --max-wait-minutes 30 --poll-seconds 60
+python scripts/maintenance/run_data_pipeline.py --max-wait-minutes 30 --poll-seconds 60
 ```
 
 In automatic mode the pipeline checks the NYSE calendar and market-close time.
@@ -286,7 +367,7 @@ the close and a 15-minute publication delay it includes the session that just
 finished. A specific completed session can be selected manually when needed:
 
 ```powershell
-python scripts/run_data_pipeline.py --as-of 2026-08-24
+python scripts/maintenance/run_data_pipeline.py --as-of 2026-08-24
 ```
 
 Use the manual date only for a completed NYSE session. This is useful when you
@@ -296,7 +377,7 @@ Emergency/maintenance command: redownload the complete available Yahoo history
 for every security in the registry and rebuild all processed files:
 
 ```powershell
-python scripts/run_data_pipeline.py --full-refresh
+python scripts/maintenance/run_data_pipeline.py --full-refresh
 ```
 
 The full refresh is intentionally not the everyday command. It may take a long
@@ -308,13 +389,13 @@ waiting on the normal retry schedule.
 Both options can be combined to stop the rebuilt history at a selected session:
 
 ```powershell
-python scripts/run_data_pipeline.py --full-refresh --as-of 2026-08-24
+python scripts/maintenance/run_data_pipeline.py --full-refresh --as-of 2026-08-24
 ```
 
 Show all available pipeline options without downloading anything:
 
 ```powershell
-python scripts/run_data_pipeline.py --help
+python scripts/maintenance/run_data_pipeline.py --help
 ```
 
 Yahoo treats its end date as exclusive, so the downloader automatically asks
@@ -368,6 +449,11 @@ snapshot contains current ETF holdings, not historical point-in-time Russell
 3000 membership, so it must not be used to claim a survivorship-bias-free
 historical backtest.
 
+The generic Yahoo portfolio backtester remains a diagnostic path for the
+current-universe MVP. The CRSP runner is the historical research path; the
+Yahoo adapter and daily pipeline remain in place because they provide the
+current market data needed by the live screener.
+
 Run the first current-universe ATH screener after the daily data pipeline:
 
 ```powershell
@@ -377,7 +463,7 @@ python scripts/run_screener.py
 Recreate the same screener at a completed historical NYSE session:
 
 ```powershell
-python scripts/run_historical_screener.py 2023-05-25
+python scripts/maintenance/run_historical_screener.py 2023-05-25
 ```
 
 When `run_historical_screener.py` is launched with the editor's Run button and

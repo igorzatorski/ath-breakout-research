@@ -198,7 +198,25 @@ def audit_crsp_history(
             report["unflagged_null_total_return"].fillna(0).sum()
         ),
         "missing_volume_rows": int(report["null_volume"].fillna(0).sum()),
-        "errors": errors, "warnings": warnings,
+        "errors": errors,
+        "warnings": warnings,
+        "warning_classes": [
+            {
+                "category": "raw_ohlc_relation",
+                "severity": "requires_review",
+                "action": "preserve_raw_exclude_from_strategy",
+                "count": sum(
+                    int(row.get("ohlc_high_violations", 0) or 0)
+                    + int(row.get("ohlc_low_violations", 0) or 0)
+                    for row in rows
+                ),
+                "description": (
+                    "Raw records are preserved. Inconsistent OHLC rows are excluded "
+                    "by strategy normalization; source cause and impact are not established. "
+                    "Count represents relation violations, not necessarily unique records."
+                ),
+            }
+        ] if warnings else [],
     }
     return summary, report
 

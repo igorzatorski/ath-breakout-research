@@ -48,6 +48,8 @@ def test_builds_ranking_ready_security_snapshot() -> None:
     assert result["new_ath_close_today"] == True
     assert result["fresh_breakout_today"] == True
     assert result["ath_continuation_today"] == False
+
+
     assert result["sessions_since_prior_ath"] == 39
     assert result["passes_ath_age_filter"] == True
     assert result["setup_state"] == "fresh_breakout"
@@ -65,6 +67,15 @@ def test_builds_ranking_ready_security_snapshot() -> None:
     )
     assert result["setup_score"] == pytest.approx(component_total, abs=0.02)
     assert 0 <= result["breakout_quality_score"] <= 100
+
+
+def test_nominal_price_and_liquidity_are_not_adjusted_price_filters():
+    data = make_processed_prices()
+    data["nominal_close"] = 4.0
+    data["nominal_volume"] = 100.0
+    result = build_security_snapshot(data, date(2024, 12, 3))
+    assert result["passes_all_basic_filters"] == False
+    assert result["liquidity_dollar_volume_20"] == 400.0
 
 
 def test_price_and_liquidity_filters_use_point_in_time_nominal_prices() -> None:
@@ -325,6 +336,15 @@ def test_rejects_security_without_the_scan_date() -> None:
     data = make_processed_prices()
 
     result = build_security_snapshot(data, date(2024, 12, 4))
+
+    assert result is None
+
+
+def test_skips_breakout_without_prior_base_history() -> None:
+    data = make_processed_prices().iloc[[0]].copy()
+    data["breakout"] = True
+
+    result = build_security_snapshot(data, data.iloc[0]["date"].date())
 
     assert result is None
 

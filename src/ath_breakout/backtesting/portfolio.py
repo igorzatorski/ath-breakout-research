@@ -8,12 +8,14 @@ import pandas as pd
 
 from ath_breakout.data.storage import load_security_data, security_file_path
 from ath_breakout.screening.features import build_security_snapshot
+from ath_breakout.data.market_calendar import valid_nyse_sessions
 
 
 SIMULATION_COLUMNS = [
     "security_id", "ticker", "date", "close", "dividends",
     "split_adj_open", "split_adj_close", "sma_50", "sma_100", "sma_150",
 ]
+RETURN_MODES = {"cash_dividend", "crsp_total_return"}
 
 
 @dataclass
@@ -116,6 +118,9 @@ def run_portfolio_backtest(
     target_position_weight: float = 0.03,
     maximum_positions: int = 33,
     transaction_cost_bps: float = 10.0,
+    delistings: pd.DataFrame | None = None,
+    survivorship_warning: str | None = None,
+    return_mode: str = "cash_dividend",
 ) -> PortfolioBacktest:
     """Simulate ranked next-open entries and moving-average exits."""
     _validate_assumptions(
@@ -123,11 +128,14 @@ def run_portfolio_backtest(
         target_position_weight,
         maximum_positions,
         transaction_cost_bps,
+        return_mode,
     )
     benchmark = _benchmark_curve(
         benchmark_data, start_date, end_date, initial_capital
     )
-    sessions = benchmark["date"].tolist()
+    sessions = valid_nyse_sessions(start_date, end_date).tolist()
+    if not sessions:
+        raise ValueError("No trading sessions in selected period")
     candidates_by_date = _candidates_by_date(candidates)
     cost_rate = transaction_cost_bps / 10_000
     cash = float(initial_capital)
@@ -137,23 +145,66 @@ def run_portfolio_backtest(
     trades = []
     events = []
     skipped_capacity = 0
+    delisting_map = _build_delisting_map(delistings)
+    delisting_exits = 0
+    use_total_return = return_mode == "crsp_total_return"
+    return_fallbacks = 0
+    stale_position_sessions = 0
 
     for session in sessions:
         session = pd.Timestamp(session).normalize()
 
-        # A dividend belongs to a position held before the ex-date open.
+        if not use_total_return:
+            # A dividend belongs to a position held before the ex-date open.
+            for security_id, position in list(positions.items()):
+                row = _row_on(price_history, security_id, session)
+                if row is None:
+                    continue
+                raw_close = float(row["close"])
+                adjusted_close = float(row["split_adj_close"])
+                split_factor = adjusted_close / raw_close if raw_close > 0 else 1.0
+                dividend_cash = (
+                    position["shares"] * float(row["dividends"]) * split_factor
+                )
+                cash += dividend_cash
+                position["dividends_received"] += dividend_cash
+
+        # CRSP supplies a terminal return when a security leaves the database.
         for security_id, position in list(positions.items()):
-            row = _row_on(price_history, security_id, session)
-            if row is None:
+            outcome = delisting_map.get(security_id)
+            if outcome is None or session.date() < outcome["exit_date"]:
                 continue
-            raw_close = float(row["close"])
-            adjusted_close = float(row["split_adj_close"])
-            split_factor = adjusted_close / raw_close if raw_close > 0 else 1.0
-            dividend_cash = (
-                position["shares"] * float(row["dividends"]) * split_factor
+            if pd.isna(outcome["delisting_return"]):
+                raise ValueError(f"Missing terminal return for held security {security_id}")
+            terminal_price = max(
+                0.0,
+                position["last_close"]
+                * position["return_multiplier"]
+                * (1.0 + outcome["delisting_return"]),
+            ) * (1 - cost_rate)
+            proceeds = position["shares"] * terminal_price
+            cash += proceeds
+            trades.append(
+                {
+                    "ticker": position["ticker"], "security_id": security_id,
+                    "entry_date": position["entry_date"], "entry_price": position["entry_price"],
+                    "exit_date": session, "exit_price": terminal_price,
+                    "shares": position["shares"], "holding_sessions": position["holding_sessions"],
+                    "exit_sma": position["active_sma"],
+                    "dividends_received": position["dividends_received"],
+                    "return_pct": (proceeds + position["dividends_received"])
+                    / position["invested_value"] - 1,
+                    "setup_score": position["setup_score"],
+                    "breakout_quality_score": position["breakout_quality_score"],
+                    "pnl": proceeds + position["dividends_received"] - position["invested_value"],
+                }
             )
-            cash += dividend_cash
-            position["dividends_received"] += dividend_cash
+            events.append({
+                "date": session, "ticker": position["ticker"],
+                "event": "delisting_exit", "price": terminal_price,
+            })
+            del positions[security_id]
+            delisting_exits += 1
 
         # Exit orders created at the previous close execute first.
         for security_id, position in list(positions.items()):
@@ -162,7 +213,19 @@ def run_portfolio_backtest(
             row = _row_on(price_history, security_id, session)
             if row is None:
                 continue
-            exit_price = float(row["split_adj_open"]) * (1 - cost_rate)
+            if use_total_return:
+                # Ex-date entitlement survives an exit at the open. Do not
+                # use today's close-to-close return for an opening trade.
+                dividend = row.get("dividends", 0.0)
+                dividend = 0.0 if pd.isna(dividend) else float(dividend)
+                dividend_cash = position["shares"] * position["return_multiplier"] * dividend
+                cash += dividend_cash
+                position["dividends_received"] += dividend_cash
+            exit_price = (
+                float(row["split_adj_open"])
+                * position["return_multiplier"]
+                * (1 - cost_rate)
+            )
             proceeds = position["shares"] * exit_price
             cash += proceeds
             total_return = (
@@ -195,7 +258,14 @@ def run_portfolio_backtest(
 
         equity_at_open = cash + sum(
             position["shares"]
-            * _mark_price(price_history, security_id, session, "split_adj_open", position["last_close"])
+            * _mark_price(
+                price_history,
+                security_id,
+                session,
+                "split_adj_open",
+                position["last_close"],
+            )
+            * position["return_multiplier"]
             for security_id, position in positions.items()
         )
         target_value = equity_at_open * target_position_weight
@@ -217,7 +287,10 @@ def run_portfolio_backtest(
                 continue
             execution_price = float(row["split_adj_open"]) * (1 + cost_rate)
             allocation = min(target_value, cash)
-            shares = int(allocation // execution_price)
+            nominal_close = row.get("nominal_close", row["close"])
+            unit_factor = float(nominal_close) / float(row["split_adj_close"])
+            # Round actual shares, then express holdings in adjusted units.
+            shares = int(allocation // (execution_price * unit_factor)) * unit_factor
             if shares <= 0:
                 continue
             invested_value = shares * execution_price
@@ -233,6 +306,7 @@ def run_portfolio_backtest(
                 "active_sma": 150,
                 "pending_exit": False,
                 "last_close": float(row["split_adj_close"]),
+                "return_multiplier": 1.0,
                 "setup_score": candidate["setup_score"],
                 "breakout_quality_score": candidate[
                     "breakout_quality_score"
@@ -246,8 +320,15 @@ def run_portfolio_backtest(
         for security_id, position in positions.items():
             row = _row_on(price_history, security_id, session)
             if row is None:
+                stale_position_sessions += 1
                 continue
             close_price = float(row["split_adj_close"])
+            if use_total_return and session.date() != position["entry_date"].date():
+                if pd.isna(row.get("total_return")):
+                    return_fallbacks += 1
+                position["return_multiplier"] *= _total_return_factor(
+                    row, position["last_close"]
+                ) / (close_price / position["last_close"])
             position["last_close"] = close_price
             position["holding_sessions"] += 1
             gain = close_price / position["entry_price"] - 1
@@ -266,7 +347,9 @@ def run_portfolio_backtest(
                 position["pending_exit"] = True
 
         position_value = sum(
-            position["shares"] * position["last_close"]
+            position["shares"]
+            * position["last_close"]
+            * position["return_multiplier"]
             for position in positions.values()
         )
         equity_value = cash + position_value
@@ -299,11 +382,16 @@ def run_portfolio_backtest(
         len(candidates),
         skipped_capacity,
         len(positions),
+        delisting_exits,
+        survivorship_warning,
+        return_mode,
     )
+    summary["return_fallback_sessions"] = return_fallbacks
+    summary["stale_position_sessions"] = stale_position_sessions
     return PortfolioBacktest(equity, trades_table, events_table, summary)
 
 
-def _validate_assumptions(capital, weight, maximum_positions, costs) -> None:
+def _validate_assumptions(capital, weight, maximum_positions, costs, return_mode) -> None:
     if capital <= 0:
         raise ValueError("initial_capital must be greater than zero")
     if weight <= 0 or weight > 1:
@@ -312,6 +400,9 @@ def _validate_assumptions(capital, weight, maximum_positions, costs) -> None:
         raise ValueError("maximum_positions must be greater than zero")
     if costs < 0:
         raise ValueError("transaction_cost_bps cannot be negative")
+    if return_mode not in RETURN_MODES:
+        allowed = ", ".join(sorted(RETURN_MODES))
+        raise ValueError(f"return_mode must be one of: {allowed}")
 
 
 def _row_on(price_history, security_id, session):
@@ -327,12 +418,53 @@ def _mark_price(price_history, security_id, session, column, fallback):
     return float(row[column]) if row is not None else float(fallback)
 
 
+def _total_return_factor(row: pd.Series, previous_close: float) -> float:
+    """Return one day's CRSP total-return factor with a transparent fallback."""
+    total_return = row.get("total_return")
+    if pd.notna(total_return) and (float(total_return) < -1 or not float(total_return) < float("inf")):
+        raise ValueError("Invalid CRSP total return")
+    if pd.notna(total_return) and float(total_return) >= -1.0:
+        return 1.0 + float(total_return)
+    if previous_close <= 0:
+        return 1.0
+    price_factor = float(row["split_adj_close"]) / previous_close
+    dividend = row.get("dividends", 0.0)
+    dividend = 0.0 if pd.isna(dividend) else float(dividend)
+    return price_factor + dividend / previous_close
+
+
 def _candidates_by_date(candidates):
     if len(candidates) == 0:
         return {}
     result = {}
     for signal_date, rows in candidates.groupby("signal_date"):
         result[pd.Timestamp(signal_date).normalize()] = rows.to_dict("records")
+    return result
+
+
+def _build_delisting_map(delistings: pd.DataFrame | None) -> dict[str, dict]:
+    if delistings is None or len(delistings) == 0:
+        return {}
+    required = {"permno", "delisting_return"}
+    missing = sorted(required - set(delistings.columns))
+    if missing:
+        raise ValueError(f"Missing delisting columns: {', '.join(missing)}")
+    result = {}
+    for _, row in delistings.iterrows():
+        return_value = row["delisting_return"]
+        # Parquet nullable columns yield pd.NA; such metadata rows are not
+        # usable outcomes and must not abort a full-universe run.
+        if return_value is pd.NA:
+            continue
+        exit_date = row.get("daily_return_date")
+        if pd.isna(exit_date):
+            exit_date = row.get("delisting_date")
+        if pd.isna(exit_date):
+            continue
+        result[str(int(row["permno"]))] = {
+            "exit_date": pd.Timestamp(exit_date).date(),
+            "delisting_return": float(return_value),
+        }
     return result
 
 
@@ -344,16 +476,31 @@ def _benchmark_curve(data, start_date, end_date, capital):
         & (benchmark["date"].dt.date <= end_date)
     ].sort_values("date")
     if len(benchmark) == 0:
-        raise ValueError("benchmark has no data in the selected period")
+        return pd.DataFrame(columns=["date", "benchmark_equity"])
     column = "adj_close" if "adj_close" in benchmark.columns else "split_adj_close"
     benchmark["benchmark_equity"] = benchmark[column] / float(benchmark.iloc[0][column]) * capital
     return benchmark[["date", "benchmark_equity"]].reset_index(drop=True)
 
 
-def _build_summary(equity, trades, capital, max_positions, weight, costs, signals, skipped, open_count):
+def _build_summary(
+    equity,
+    trades,
+    capital,
+    max_positions,
+    weight,
+    costs,
+    signals,
+    skipped,
+    open_count,
+    delisting_exits=0,
+    survivorship_warning=None,
+    return_mode="cash_dividend",
+):
     years = max((equity.iloc[-1]["date"] - equity.iloc[0]["date"]).days / 365.25, 0.0)
     final_equity = float(equity.iloc[-1]["equity"])
     benchmark_final = float(equity.iloc[-1]["benchmark_equity"])
+    if equity["benchmark_equity"].isna().any():
+        benchmark_final = float("nan")
     cagr = (final_equity / capital) ** (1 / years) - 1 if years > 0 else 0.0
     benchmark_cagr = (benchmark_final / capital) ** (1 / years) - 1 if years > 0 else 0.0
     daily_std = float(equity["daily_return"].std())
@@ -369,6 +516,8 @@ def _build_summary(equity, trades, capital, max_positions, weight, costs, signal
         "maximum_positions_used": int(equity["open_positions"].max()),
         "maximum_positions": max_positions, "target_position_weight": weight,
         "completed_trades": len(trades), "open_positions_at_end": open_count,
+        "delisting_exits": delisting_exits,
+        "return_mode": return_mode,
         "win_rate": wins,
         "average_trade_return": float(trades["return_pct"].mean()) if len(trades) else 0.0,
         "benchmark_final_equity": benchmark_final,
@@ -376,7 +525,8 @@ def _build_summary(equity, trades, capital, max_positions, weight, costs, signal
         "benchmark_cagr": benchmark_cagr,
         "candidate_signals": signals, "signals_skipped_at_capacity": skipped,
         "transaction_cost_bps_per_side": costs,
-        "survivorship_warning": "Current IWV constituents used for all historical dates",
+        "survivorship_warning": survivorship_warning
+        or "Current IWV constituents used for all historical dates",
     }
 
 

@@ -92,14 +92,15 @@ def build_security_snapshot(
         return None
 
     close = float(latest["split_adj_close"])
-    nominal_close = float(latest["close"])
+    nominal_close = float(latest.get("nominal_close", latest["close"]))
     prior_ath = latest["prior_ath"]
     recent_20 = history.tail(20)
     recent_60 = history.tail(60)
 
     average_volume_20 = float(recent_20["volume"].mean())
     average_dollar_volume_20 = float(
-        (recent_20["close"] * recent_20["volume"]).mean()
+        (recent_20.get("nominal_close", recent_20["close"])
+         * recent_20.get("nominal_volume", recent_20["volume"])).mean()
     )
     volume_ratio_20 = (
         float(latest["volume"]) / average_volume_20
@@ -217,6 +218,12 @@ def build_security_snapshot(
         consolidation_history = history.iloc[:-1]
     else:
         consolidation_history = history
+
+    # A breakout on the first available observation has no base to evaluate.
+    # It cannot be a valid fresh breakout, so skip it instead of indexing an
+    # empty history below.
+    if len(consolidation_history) == 0:
+        return None
 
     consolidation_days, consolidation_depth_pct = measure_consolidation(
         consolidation_history,

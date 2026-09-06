@@ -1,6 +1,7 @@
 """Run the current-universe stock screener at a historical session close."""
 
 import argparse
+import json
 from datetime import date, datetime
 from pathlib import Path
 
@@ -15,6 +16,7 @@ REGISTRY_FILE = Path("data/state/security_registry.csv")
 QUALITY_REPORT_FILE = Path("data/state/data_quality_report.csv")
 PROCESSED_DIRECTORY = Path("data/processed/features")
 OUTPUT_DIRECTORY = Path("outputs/screening/history")
+CRSP_MANIFEST_PATH = Path("data/state/crsp_daily_history_manifest.json")
 
 
 def parse_date(value: str) -> date:
@@ -56,6 +58,14 @@ def main(arguments: list[str] | None = None) -> None:
     args = parse_arguments(arguments)
     requested_date = args.date or request_scan_date()
     scan_date = resolve_completed_session(as_of=requested_date).date()
+    manifest_path = CRSP_MANIFEST_PATH
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text())
+        if scan_date <= date.fromisoformat(manifest["end_date"]):
+            if scan_date < date.fromisoformat(manifest["start_date"]):
+                raise ValueError("Requested screen predates CRSP coverage")
+            from scripts.internal.run_crsp_screen import main as crsp_screen
+            return crsp_screen(scan_date)
     started_at = datetime.now()
     print(
         f"[{started_at:%Y-%m-%d %H:%M:%S}] "

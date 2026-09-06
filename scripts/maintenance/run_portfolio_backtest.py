@@ -88,7 +88,7 @@ def main(arguments: list[str] | None = None) -> None:
     args = parse_arguments(arguments)
     if not SPY_FILE.exists() or not IWV_FILE.exists():
         raise FileNotFoundError(
-            "SPY or IWV benchmark is missing. Run python scripts/run_data_pipeline.py first."
+            "SPY or IWV benchmark is missing. Run python scripts/maintenance/run_data_pipeline.py first."
         )
 
     spy = load_security_data(SPY_FILE)

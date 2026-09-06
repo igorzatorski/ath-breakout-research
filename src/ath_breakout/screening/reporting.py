@@ -22,7 +22,7 @@ def print_ranking_model_table() -> None:
         ["Base shape", "20", "depth, rising lows, price-line consistency"],
         ["Base maturity", "10", "consolidation duration"],
         ["Trend", "20", "SMA structure and SMA200 slope"],
-        ["Relative strength", "20", "return vs IWV over 3, 6 and 12 months"],
+        ["Relative strength", "20", "return vs selected benchmark over 3, 6 and 12 months"],
         ["Contraction", "15", "ATR and price-range contraction"],
         ["ATH readiness", "15", "distance from the prior ATH"],
     ]

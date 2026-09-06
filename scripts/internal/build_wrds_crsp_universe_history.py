@@ -93,6 +93,7 @@ def main() -> None:
     print("Building resumable CRSP universe-history partitions...", flush=True)
     connection = wrds.Connection(**connection_arguments)
     try:
+        previous = json.loads(arguments.manifest.read_text()) if arguments.manifest.exists() else {}
         bounds = list(yearly_bounds(arguments.start_year, arguments.end_date))
         started_at = time.monotonic()
         for number, (lookback_start, formation_start, formation_end) in enumerate(
@@ -100,7 +101,8 @@ def main() -> None:
         ):
             year = formation_start.year
             destination = arguments.output_directory / f"universe_{year}.parquet"
-            if destination.exists() and not arguments.overwrite:
+            covered = previous.get('requested_end_date', '') >= str(formation_end.date())
+            if destination.exists() and not arguments.overwrite and covered:
                 batch = pd.read_parquet(destination)
                 print(
                     f"[{number}/{len(bounds)}] {year}: existing partition, "

@@ -1,9 +1,10 @@
 from datetime import date
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
-from scripts import run_historical_screener
+from scripts.maintenance import run_historical_screener
 
 
 def test_rejects_a_date_outside_iso_format() -> None:
@@ -58,6 +59,11 @@ def test_runs_and_saves_a_historical_screen(
         run_historical_screener,
         "print_candidate_tables",
         lambda data: None,
+    )
+    monkeypatch.setattr(
+        run_historical_screener,
+        "CRSP_MANIFEST_PATH",
+        Path("__missing_crsp_manifest_for_test__.json"),
     )
 
     run_historical_screener.main(["2026-08-21"])

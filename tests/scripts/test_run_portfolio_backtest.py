@@ -3,7 +3,7 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from scripts.run_portfolio_backtest import (
+from scripts.maintenance.run_portfolio_backtest import (
     parse_arguments,
     request_backtest_period,
     resolve_period,

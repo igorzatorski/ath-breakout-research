@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 
-SCRIPT = Path("scripts/build_wrds_crsp_universe_history.py")
+SCRIPT = Path("scripts/maintenance/build_wrds_crsp_universe_history.py")
 SPEC = importlib.util.spec_from_file_location("build_crsp_universe_history", SCRIPT)
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None

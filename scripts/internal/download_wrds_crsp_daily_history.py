@@ -157,7 +157,9 @@ def build_ath_seed(connection, permnos, start_date: str) -> pd.DataFrame:
 
 def write_manifest(path: Path, contents: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(contents, indent=2), encoding="utf-8")
+    temporary = path.with_suffix('.tmp.json')
+    temporary.write_text(json.dumps(contents, indent=2), encoding="utf-8")
+    temporary.replace(path)
 
 
 def main() -> None:
@@ -194,9 +196,20 @@ def main() -> None:
     print(f"Downloading CRSP daily history for {len(permnos):,} PERMNOs...", flush=True)
     connection = wrds.Connection(**connection_arguments)
     try:
+        available = connection.raw_sql("SELECT MAX(dlycaldt) AS last_date FROM crsp_q_stock.dsf_v2")
+        if pd.Timestamp(arguments.end_date) > pd.Timestamp(available.iloc[0]['last_date']):
+            raise ValueError(f"Requested end exceeds WRDS coverage: {available.iloc[0]['last_date']}")
+        if pd.isna(available.iloc[0]["last_date"]):
+            raise ValueError("WRDS returned no CRSP coverage date")
+        previous = json.loads(arguments.manifest.read_text()) if arguments.manifest.exists() else {}
+        # Legacy manifests do not identify universe contents: refresh conservatively.
+        same_universe = previous.get('permnos') == permnos
         for number, (start, end) in enumerate(bounds, start=1):
             destination = arguments.output_directory / f"daily_{start.year}.parquet"
-            if destination.exists() and not arguments.overwrite:
+            covered = same_universe and previous.get('status') == 'complete' and pd.Timestamp(previous['start_date']) <= start and pd.Timestamp(previous['end_date']) >= end
+            resumed = next((p for p in previous.get("completed_partitions", []) if p["year"] == start.year), {})
+            covered = covered or (same_universe and resumed.get("start_date") == str(start.date()) and resumed.get("end_date") == str(end.date()))
+            if destination.exists() and not arguments.overwrite and covered:
                 rows = pq.read_metadata(destination).num_rows
                 print(
                     f"[{number}/{len(bounds)}] {start.year}: existing, {rows:,} rows.",
@@ -217,12 +230,13 @@ def main() -> None:
                     flush=True,
                 )
             partitions.append(
-                {"year": start.year, "path": str(destination.resolve()), "rows": rows}
+                {"year": start.year, "path": str(destination.resolve()), "rows": rows, "start_date": str(start.date()), "end_date": str(end.date())}
             )
             write_manifest(
                 arguments.manifest,
                 {
                     "status": "running",
+                    "permnos": permnos,
                     "start_date": arguments.start_date,
                     "end_date": arguments.end_date,
                     "unique_permnos": len(permnos),
@@ -231,15 +245,17 @@ def main() -> None:
             )
             print(progress_line(number, len(bounds), started_at), flush=True)
 
-        if not arguments.ath_seed.exists() or arguments.overwrite:
+        if not arguments.ath_seed.exists() or arguments.overwrite or not same_universe or previous.get("start_date") != arguments.start_date:
             print("Building pre-start all-time-high seed...", flush=True)
             seed = build_ath_seed(connection, permnos, arguments.start_date)
             arguments.ath_seed.parent.mkdir(parents=True, exist_ok=True)
-            seed.to_parquet(arguments.ath_seed, index=False)
+            temporary_seed = arguments.ath_seed.with_suffix(".tmp.parquet")
+            seed.to_parquet(temporary_seed, index=False)
+            temporary_seed.replace(arguments.ath_seed)
         else:
             seed = pd.read_parquet(arguments.ath_seed)
 
-        if not arguments.delistings.exists() or arguments.overwrite:
+        if not arguments.delistings.exists() or arguments.overwrite or previous.get('end_date') != arguments.end_date or not same_universe:
             print("Downloading detailed delisting outcomes...", flush=True)
             delistings = download_crsp_delistings(
                 connection,
@@ -248,13 +264,16 @@ def main() -> None:
                 end_date=arguments.end_date,
             )
             arguments.delistings.parent.mkdir(parents=True, exist_ok=True)
-            delistings.to_parquet(arguments.delistings, index=False)
+            temporary_delistings = arguments.delistings.with_suffix(".tmp.parquet")
+            delistings.to_parquet(temporary_delistings, index=False)
+            temporary_delistings.replace(arguments.delistings)
         else:
             delistings = pd.read_parquet(arguments.delistings)
     finally:
         connection.close()
 
     manifest = {
+        "permnos": permnos,
         "status": "complete",
         "start_date": arguments.start_date,
         "end_date": arguments.end_date,

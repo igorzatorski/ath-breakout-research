@@ -34,6 +34,8 @@ def test_converts_crsp_factors_and_builds_strategy_features() -> None:
     assert report.output_rows == 205
     assert result.loc[0, "split_adj_close"] == 50.0
     assert result.loc[0, "volume"] == 2_000.0
+    assert result.loc[0, "nominal_close"] == 100.0
+    assert result.loc[0, "nominal_volume"] == 1_000.0
     assert pd.notna(result.loc[199, "sma_200"])
     assert result["total_return"].iloc[0] == 0.01
     assert result["data_source"].unique().tolist() == ["CRSP CIZ quarterly"]
@@ -70,3 +72,15 @@ def test_preserves_ticker_history_and_fills_display_gaps() -> None:
 
     assert result["crsp_ticker"].isna().sum() == 1
     assert result["ticker"].tolist() == ["OLD", "OLD", "NEW"]
+
+
+def test_drops_rows_with_invalid_crsp_adjustment_factors() -> None:
+    data = crsp_rows(3)
+    data.loc[0, "price_adjustment_factor"] = 0
+    data.loc[1, "share_adjustment_factor"] = None
+
+    result, report = prepare_crsp_strategy_data(data)
+
+    assert len(result) == 1
+    assert report.invalid_price_factor_rows == 1
+    assert report.invalid_share_factor_rows == 1

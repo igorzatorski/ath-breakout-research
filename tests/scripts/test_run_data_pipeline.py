@@ -5,7 +5,7 @@ import sys
 import pandas as pd
 import pytest
 
-from scripts import run_data_pipeline
+from scripts.maintenance import run_data_pipeline
 
 
 def test_waits_until_yahoo_exposes_target_session(monkeypatch, capsys) -> None:

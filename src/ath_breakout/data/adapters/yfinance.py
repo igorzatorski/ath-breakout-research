@@ -24,6 +24,9 @@ def yahoo_session_is_available(
     ticker: str = "SPY",
 ) -> bool:
     """Return whether Yahoo already publishes a daily row for one session."""
+    cache = Path("data/cache/yfinance")
+    cache.mkdir(parents=True, exist_ok=True)
+    yf.set_tz_cache_location(str(cache))
     end_date = session + timedelta(days=1)
     try:
         data = yf.download(
