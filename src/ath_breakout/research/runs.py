@@ -49,7 +49,7 @@ def recorded_run(output_root, kind, configuration, root=PROJECT_ROOT):
     manifest = {
         'schema_version': 1, 'run_id': run_id, 'kind': kind, 'status': 'running',
         'started_at_utc': started.isoformat(), 'configuration': configuration,
-        'fingerprints': fingerprints(root),
+        'fingerprints': None,
     }
 
     def save():
@@ -59,18 +59,19 @@ def recorded_run(output_root, kind, configuration, root=PROJECT_ROOT):
 
     save()
     try:
+        manifest['fingerprints'] = fingerprints(root)
+        save()
         yield output
-    except BaseException as error:
-        manifest['status'] = 'failed'
-        manifest['error_type'] = type(error).__name__
-        raise
-    else:
-        manifest['status'] = 'complete'
         manifest['artifacts'] = {
             path.relative_to(output).as_posix(): file_hash(path)
             for path in sorted(output.rglob('*'))
             if path.is_file() and path.name != 'manifest.json'
         }
+        manifest['status'] = 'complete'
+    except BaseException as error:
+        manifest['status'] = 'failed'
+        manifest['error_type'] = type(error).__name__
+        raise
     finally:
         manifest['finished_at_utc'] = datetime.now(timezone.utc).isoformat()
         save()

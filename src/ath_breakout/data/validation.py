@@ -1,6 +1,7 @@
 """Validate market data used by the system."""
 
 import pandas as pd
+import numpy as np
 
 
 REQUIRED_OHLCV_COLUMNS = (
@@ -64,6 +65,8 @@ def validate_numeric_columns(data: pd.DataFrame) -> None:
             raise ValueError(
                 f"Non-numeric values found in column: {numeric_column}"
             )
+        if not np.isfinite(data[numeric_column].to_numpy(dtype=float)).all():
+            raise ValueError(f"Non-finite values found in column: {numeric_column}")
 
 
 def validate_positive_prices(data: pd.DataFrame) -> None:
@@ -137,6 +140,8 @@ def validate_corporate_actions(data: pd.DataFrame) -> None:
 
         if pd.api.types.is_numeric_dtype(data[column]) == False:
             raise ValueError(f"Non-numeric values found in column: {column}")
+        if not np.isfinite(data[column].to_numpy(dtype=float)).all():
+            raise ValueError(f"Non-finite values found in column: {column}")
 
     if (data["adj_close"] <= 0).sum() > 0:
         raise ValueError("Non-positive adjusted close found")

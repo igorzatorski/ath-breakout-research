@@ -188,9 +188,9 @@ def build_security_snapshot(
     share_above_sma_200_100 = float(
         above_sma_200_history.tail(100).mean()
     )
-    rolling_peak_252 = history["split_adj_close"].cummax()
-    drawdowns_252 = history["split_adj_close"] / rolling_peak_252 - 1
-    maximum_drawdown_252_pct = float(drawdowns_252.tail(252).min())
+    trailing_prices = history["split_adj_close"].tail(252)
+    drawdowns_252 = trailing_prices / trailing_prices.cummax() - 1
+    maximum_drawdown_252_pct = float(drawdowns_252.min())
 
     sma_200_slope_20_pct = (
         float(latest["sma_200"]) / float(history.iloc[-21]["sma_200"]) - 1
@@ -576,11 +576,13 @@ def _relative_strength(
         / float(security_data.iloc[-sessions - 1]["split_adj_close"])
         - 1
     )
-    benchmark_return = (
-        float(benchmark_data.iloc[-1]["split_adj_close"])
-        / float(benchmark_data.iloc[-sessions - 1]["split_adj_close"])
-        - 1
-    )
+    # Compare identical endpoints, including securities with missing sessions.
+    start = pd.Timestamp(security_data.iloc[-sessions - 1]["date"])
+    end = pd.Timestamp(security_data.iloc[-1]["date"])
+    benchmark = benchmark_data.set_index("date")["split_adj_close"]
+    if start not in benchmark.index or end not in benchmark.index:
+        return float("nan")
+    benchmark_return = float(benchmark.loc[end]) / float(benchmark.loc[start]) - 1
     return security_return - benchmark_return
 
 

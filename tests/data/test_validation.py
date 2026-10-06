@@ -99,6 +99,16 @@ def test_rejects_missing_values() -> None:
         validate_missing_values(data)
 
 
+def test_rejects_non_finite_numeric_values() -> None:
+    data = pd.DataFrame({
+        "security_id": ["AAPL"], "ticker": ["AAPL"],
+        "date": ["2024-01-02"], "open": [float("inf")],
+        "high": [101.0], "low": [99.0], "close": [100.0], "volume": [1_000],
+    })
+    with pytest.raises(ValueError, match="Non-finite values found in column: open"):
+        validate_numeric_columns(data)
+
+
 def test_accepts_numeric_columns() -> None:
     data = pd.DataFrame(
         {

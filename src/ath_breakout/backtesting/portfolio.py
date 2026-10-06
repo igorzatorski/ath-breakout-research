@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 import numpy as np
+from numbers import Integral
 
 from ath_breakout.data.storage import load_security_data, security_file_path
 from ath_breakout.screening.features import build_security_snapshot
@@ -278,8 +279,7 @@ def run_portfolio_backtest(
         target_value = equity_at_open * target_position_weight
         ranked_candidates = sorted(
             pending_candidates,
-            key=lambda item: (item["setup_score"], item["breakout_quality_score"]),
-            reverse=True,
+            key=lambda item: (-item["setup_score"], -item["breakout_quality_score"], str(item["security_id"])),
         )
 
         for candidate in ranked_candidates:
@@ -380,8 +380,10 @@ def run_portfolio_backtest(
     equity["equity_peak"] = equity["equity"].cummax()
     equity["drawdown"] = equity["equity"] / equity["equity_peak"] - 1
     equity["benchmark_daily_return"] = (
-        equity["benchmark_equity"].pct_change(fill_method=None).fillna(0.0)
+        equity["benchmark_equity"].pct_change(fill_method=None)
     )
+    if pd.notna(equity.loc[0, "benchmark_equity"]):
+        equity.loc[0, "benchmark_daily_return"] = 0.0
     equity["benchmark_peak"] = equity["benchmark_equity"].cummax()
     equity["benchmark_drawdown"] = (
         equity["benchmark_equity"] / equity["benchmark_peak"] - 1
@@ -408,14 +410,14 @@ def run_portfolio_backtest(
 
 
 def _validate_assumptions(capital, weight, maximum_positions, costs, return_mode) -> None:
-    if capital <= 0:
+    if not np.isfinite(capital) or capital <= 0:
         raise ValueError("initial_capital must be greater than zero")
-    if weight <= 0 or weight > 1:
+    if not np.isfinite(weight) or weight <= 0 or weight > 1:
         raise ValueError("target_position_weight must be between zero and one")
-    if maximum_positions <= 0:
-        raise ValueError("maximum_positions must be greater than zero")
-    if costs < 0:
-        raise ValueError("transaction_cost_bps cannot be negative")
+    if isinstance(maximum_positions, bool) or not isinstance(maximum_positions, Integral) or maximum_positions <= 0:
+        raise ValueError("maximum_positions must be a positive integer")
+    if not np.isfinite(costs) or costs < 0 or costs >= 10_000:
+        raise ValueError("transaction_cost_bps must be finite and between zero and 10000 (exclusive)")
     if return_mode not in RETURN_MODES:
         allowed = ", ".join(sorted(RETURN_MODES))
         raise ValueError(f"return_mode must be one of: {allowed}")
@@ -426,7 +428,12 @@ def _row_on(price_history, security_id, session):
     if data is None or session not in data.index:
         return None
     row = data.loc[session]
-    return row.iloc[-1] if isinstance(row, pd.DataFrame) else row
+    if isinstance(row, pd.DataFrame):
+        raise ValueError(f"Duplicate price session for {security_id}: {session}")
+    prices = [row["split_adj_open"], row["split_adj_close"], row["close"]]
+    if not np.isfinite(np.asarray(prices, dtype=float)).all() or min(prices) <= 0:
+        raise ValueError(f"Invalid execution prices for {security_id}: {session}")
+    return row
 
 
 def _mark_price(price_history, security_id, session, column, fallback):
@@ -468,18 +475,20 @@ def _build_delisting_map(delistings: pd.DataFrame | None) -> dict[str, dict]:
     result = {}
     for _, row in delistings.iterrows():
         return_value = row["delisting_return"]
-        # Parquet nullable columns yield pd.NA; such metadata rows are not
-        # usable outcomes and must not abort a full-universe run.
-        if return_value is pd.NA:
-            continue
         exit_date = row.get("daily_return_date")
         if pd.isna(exit_date):
             exit_date = row.get("delisting_date")
         if pd.isna(exit_date):
             continue
-        result[str(int(row["permno"]))] = {
+        value = float("nan") if pd.isna(return_value) else float(return_value)
+        if pd.notna(value) and (not np.isfinite(value) or value < -1):
+            raise ValueError("Invalid CRSP delisting return")
+        security_id = str(int(row["permno"]))
+        if security_id in result:
+            raise ValueError(f"Multiple delisting outcomes for {security_id}")
+        result[security_id] = {
             "exit_date": pd.Timestamp(exit_date).date(),
-            "delisting_return": float(return_value),
+            "delisting_return": value,
         }
     return result
 
@@ -494,6 +503,11 @@ def _benchmark_curve(data, start_date, end_date, capital):
     if len(benchmark) == 0:
         return pd.DataFrame(columns=["date", "benchmark_equity"])
     column = "adj_close" if "adj_close" in benchmark.columns else "split_adj_close"
+    if benchmark["date"].duplicated().any():
+        raise ValueError("Duplicate benchmark sessions")
+    prices = benchmark[column].to_numpy(dtype=float)
+    if not np.isfinite(prices).all() or (prices <= 0).any():
+        raise ValueError("Benchmark prices must be finite and positive")
     benchmark["benchmark_equity"] = benchmark[column] / float(benchmark.iloc[0][column]) * capital
     return benchmark[["date", "benchmark_equity"]].reset_index(drop=True)
 
@@ -520,14 +534,9 @@ def _build_summary(
     cagr = (final_equity / capital) ** (1 / years) - 1 if years > 0 else 0.0
     benchmark_cagr = (benchmark_final / capital) ** (1 / years) - 1 if years > 0 else 0.0
     daily_std = float(equity["daily_return"].std())
-    benchmark_returns = equity.loc[
-        equity["benchmark_equity"].notna(), "benchmark_daily_return"
-    ]
+    benchmark_returns = equity["benchmark_daily_return"].dropna()
     benchmark_std = float(benchmark_returns.std())
-    aligned = equity.loc[
-        equity["benchmark_equity"].notna(),
-        ["daily_return", "benchmark_daily_return"],
-    ]
+    aligned = equity[["daily_return", "benchmark_daily_return"]].dropna()
     benchmark_variance = float(aligned["benchmark_daily_return"].var())
     beta = (
         float(aligned.cov().loc["daily_return", "benchmark_daily_return"])
@@ -545,12 +554,15 @@ def _build_summary(
     )
     active_returns = aligned["daily_return"] - aligned["benchmark_daily_return"]
     tracking_error_daily = float(active_returns.std())
-    downside = equity.loc[equity["daily_return"] < 0, "daily_return"]
-    downside_std = float(downside.std())
+    downside_std = float(np.sqrt(equity["daily_return"].clip(upper=0).pow(2).mean()))
+    benchmark_downside = float(np.sqrt(benchmark_returns.clip(upper=0).pow(2).mean()))
     maximum_drawdown = float(equity["drawdown"].min())
     average_exposure = float(equity["exposure"].mean())
     wins = float((trades["return_pct"] > 0).mean()) if len(trades) else 0.0
     return {
+        "metrics_version": 2,
+        "benchmark_missing_sessions": int(equity["benchmark_equity"].isna().sum()),
+        "benchmark_return_observations": len(benchmark_returns),
         "start_date": equity.iloc[0]["date"].date(), "end_date": equity.iloc[-1]["date"].date(),
         "initial_capital": capital, "final_equity": final_equity,
         "total_return_pct": final_equity / capital - 1, "cagr": cagr,
@@ -582,8 +594,8 @@ def _build_summary(
         ),
         "benchmark_maximum_drawdown": float(equity["benchmark_drawdown"].min()),
         "benchmark_sortino_ratio_zero_rate": (
-            float(benchmark_returns.mean() / benchmark_returns[benchmark_returns < 0].std() * (252 ** 0.5))
-            if float(benchmark_returns[benchmark_returns < 0].std()) > 0 else 0.0
+            float(benchmark_returns.mean() / benchmark_downside * (252 ** 0.5))
+            if benchmark_downside > 0 else 0.0
         ),
         "benchmark_calmar_ratio": (
             benchmark_cagr / abs(float(equity["benchmark_drawdown"].min()))

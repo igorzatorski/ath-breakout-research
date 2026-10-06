@@ -6,7 +6,7 @@ Completed locally on Windows with Python 3.11.14 and the locked project `.venv`.
   `scikit-learn` 1.9.1 is available. No interactive shell is opened.
 - `run/check_data.py`: local manifests, partition counts, source fingerprints
   and planned coverage passed. Local CRSP ends on 2026-06-30.
-- Full suite: 257 tests passed; Ruff and `uv lock --check` passed.
+- Full suite: 277 tests passed; Ruff and `uv lock --check` passed.
 - Public launchers were tested from outside the project working directory.
 - A real local CRSP pipeline check used 2024-01-02 through 2024-01-12 and
   the first 20 sorted PERMNOs, with two portfolio configurations. Both saved
@@ -40,5 +40,5 @@ remain in the full suite. The unfiltered event extractor is not implemented.
   by retry; repeating after serial initialization emitted no lock error.
 - These checks leave the research price store unchanged. Source outages and
   upstream repair warnings remain possible and are not silently hidden.
-- Final follow-up suite: 275 tests passed; Ruff, locked dependency check and
+- Final follow-up suite: 277 tests passed; Ruff, locked dependency check and
   Git whitespace check passed. The environment check includes Rich.

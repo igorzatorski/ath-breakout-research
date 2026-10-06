@@ -4,6 +4,7 @@ import pytest
 
 from tests.backtesting.test_portfolio import DATES, make_inputs
 from ath_breakout.backtesting.portfolio import run_portfolio_backtest
+from ath_breakout.backtesting.portfolio import _validate_assumptions
 
 
 def run_case(closes, returns, exit_day=None, dividend=0.0, benchmark_start=0,
@@ -75,3 +76,10 @@ def test_missing_return_fallback_is_counted():
     result = run_case([100, 100, 110, 110, 110, 110], [0, 0, None, 0, 0, 0])
     assert result.summary["final_equity"] == pytest.approx(110000)
     assert result.summary["return_fallback_sessions"] == 1
+
+
+def test_rejects_non_finite_or_excessive_transaction_costs():
+    with pytest.raises(ValueError, match="finite"):
+        _validate_assumptions(100_000, 1.0, 1, float("nan"), "cash_dividend")
+    with pytest.raises(ValueError, match="between zero"):
+        _validate_assumptions(100_000, 1.0, 1, 10_000, "cash_dividend")

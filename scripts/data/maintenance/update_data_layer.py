@@ -37,7 +37,7 @@ def refresh_benchmark(end):
     from ath_breakout.data.market_update import update_market_data
     target = valid_nyse_sessions(pd.Timestamp(end) - pd.Timedelta(days=14), end)[-1].date()
     path = ROOT / "data/processed/features/SPY.parquet"
-    if path.exists() and pd.to_datetime(pd.read_parquet(path, columns=["date"]).date).max().date() >= target:
+    if path.exists() and pd.to_datetime(pd.read_parquet(path, columns=["date"])["date"]).max().date() >= target:
         return
     update_market_data(
         universe=pd.DataFrame({"security_id": ["SPY"], "ticker": ["SPY"]}),
@@ -46,7 +46,7 @@ def refresh_benchmark(end):
         manifest_file=ROOT / "data/state/crsp_benchmark_manifest.csv",
         download_through=target, retry_failed_now=True,
     )
-    if not path.exists() or pd.to_datetime(pd.read_parquet(path, columns=["date"]).date).max().date() < target:
+    if not path.exists() or pd.to_datetime(pd.read_parquet(path, columns=["date"])["date"]).max().date() < target:
         raise RuntimeError("SPY refresh did not reach the required CRSP benchmark date")
 
 
