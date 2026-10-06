@@ -2,8 +2,10 @@
 
 from datetime import date, datetime
 from pathlib import Path
+import time
 
 import pandas as pd
+from ath_breakout.progress import timing_suffix
 
 from ath_breakout.data.market_calendar import latest_expected_session
 from ath_breakout.data.storage import load_security_data, security_file_path
@@ -38,7 +40,7 @@ SCREEN_COLUMNS = [
 ]
 
 
-def print_screen_progress(completed: int, total: int) -> None:
+def print_screen_progress(completed: int, total: int, started_at=None) -> None:
     """Print one timestamped progress bar for the stock screener."""
     bar_width = 30
 
@@ -55,7 +57,7 @@ def print_screen_progress(completed: int, total: int) -> None:
     count_width = len(str(max(total, 1)))
     print(
         f"[{timestamp}] [{progress_bar}] {percentage:6.2f}% "
-        f"scanned {completed:>{count_width}}/{total}",
+        f"scanned {completed:>{count_width}}/{total} | {timing_suffix(completed, total, started_at)}",
         flush=True,
     )
 
@@ -120,9 +122,10 @@ def run_stock_screen(
     snapshot_rows = []
 
     total_securities = len(usable_universe)
+    progress_started = time.monotonic()
 
     if show_progress:
-        print_screen_progress(0, total_securities)
+        print_screen_progress(0, total_securities, progress_started)
 
     for security_number, (_, security) in enumerate(
         usable_universe.iterrows(),
@@ -134,6 +137,8 @@ def run_stock_screen(
         )
 
         if not processed_file.exists():
+            if show_progress and (security_number % 100 == 0 or security_number == total_securities):
+                print_screen_progress(security_number, total_securities, progress_started)
             continue
 
         data = load_security_data(processed_file, columns=SCREEN_COLUMNS)
@@ -150,7 +155,7 @@ def run_stock_screen(
             security_number % 100 == 0
             or security_number == total_securities
         ):
-            print_screen_progress(security_number, total_securities)
+            print_screen_progress(security_number, total_securities, progress_started)
 
     result = pd.DataFrame(snapshot_rows)
 

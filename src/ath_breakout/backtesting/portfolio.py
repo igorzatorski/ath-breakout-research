@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 from datetime import date, datetime
+import time
+from ath_breakout.progress import timing_suffix
 from pathlib import Path
 
 import pandas as pd
@@ -44,7 +46,7 @@ def prepare_historical_inputs(
     price_history = {}
     candidate_rows = []
     total = len(registry)
-    started_at = datetime.now()
+    started_at = time.monotonic()
 
     if show_progress:
         _print_preparation_progress(0, total, 0, started_at)
@@ -122,6 +124,7 @@ def run_portfolio_backtest(
     delistings: pd.DataFrame | None = None,
     survivorship_warning: str | None = None,
     return_mode: str = "cash_dividend",
+    show_progress: bool = False,
 ) -> PortfolioBacktest:
     """Simulate ranked next-open entries and moving-average exits."""
     _validate_assumptions(
@@ -151,8 +154,11 @@ def run_portfolio_backtest(
     use_total_return = return_mode == "crsp_total_return"
     return_fallbacks = 0
     stale_position_sessions = 0
+    simulation_started = time.monotonic()
+    if show_progress:
+        _print_simulation_progress(0, len(sessions), simulation_started)
 
-    for session in sessions:
+    for completed, session in enumerate(sessions, start=1):
         session = pd.Timestamp(session).normalize()
 
         if not use_total_return:
@@ -365,6 +371,8 @@ def run_portfolio_backtest(
             }
         )
         pending_candidates = candidates_by_date.get(session, [])
+        if show_progress and (completed % 100 == 0 or completed == len(sessions)):
+            _print_simulation_progress(completed, len(sessions), simulation_started)
 
     equity = pd.DataFrame(equity_rows).merge(benchmark, on="date", how="left")
     equity["daily_pnl"] = equity["equity"].diff().fillna(0.0)
@@ -631,9 +639,15 @@ def _print_preparation_progress(completed, total, signals, started_at):
     bar = "#" * filled + "-" * (width - filled)
     percent = 100 * completed / total if total else 100.0
     count_width = len(str(max(total, 1)))
-    elapsed = datetime.now() - started_at
     print(
         f"[{datetime.now():%Y-%m-%d %H:%M:%S}] [{bar}] {percent:6.2f}% "
-        f"securities {completed:>{count_width}}/{total} | signals: {signals} | elapsed: {elapsed}",
+        f"securities {completed:>{count_width}}/{total} | signals: {signals} | {timing_suffix(completed, total, started_at)}",
         flush=True,
     )
+
+
+def _print_simulation_progress(completed, total, started_at):
+    fraction = completed / total if total else 1
+    filled = int(30 * fraction)
+    bar = "#" * filled + "-" * (30 - filled)
+    print(f"[{bar}] {fraction:6.2%} simulation {completed}/{total} | {timing_suffix(completed, total, started_at)}", flush=True)

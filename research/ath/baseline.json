@@ -1,0 +1,31 @@
+{
+  "study_id": "ath_01_signal_baseline_v001",
+  "status": "planned_not_implemented",
+  "study_type": "event_study",
+  "source": "local_crsp",
+  "start_date": "1994-01-03",
+  "end_date": "2026-06-30",
+  "identity": "permno",
+  "universe": "historical_monthly_liquidity_3000",
+  "liquidity": {"lookback_sessions": 21, "minimum_nominal_dollar_volume": 10000000},
+  "signal": {
+    "rule": "split_close[t] > max(split_high[s] for s < t)",
+    "pre_period_seed": "audit_before_use",
+    "technical_filters": [],
+    "ranking": null,
+    "cooldown_sessions": 0,
+    "consecutive_breakouts": "retain_and_flag"
+  },
+  "execution": {"entry": "next_session_observed_open", "missing_open": "flag_non_executable"},
+  "forward_horizons_sessions": [5, 21, 63, 126],
+  "primary_horizon_sessions": 21,
+  "returns": "total_return_from_open_with_distributions_and_delistings",
+  "portfolio": null,
+  "comparisons": ["same_dates_spy_with_aligned_execution_basis", "pit_size_volatility_matched_controls"],
+  "validation": {
+    "development": ["1994-01-03", "2009-12-31"],
+    "chronological_validation": ["2010-01-01", "2017-12-31"],
+    "historical_review": ["2018-01-01", "2026-06-30"],
+    "untouched_holdout": false
+  }
+}

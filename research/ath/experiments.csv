@@ -1,0 +1,2 @@
+study_id,status,hypothesis,change_from_baseline,config_path,run_manifest_path,result,decision
+ath_01_signal_baseline_v001,planned,Describe forward returns after unfiltered ATH breakouts,none,research/ath/baseline.json,,,

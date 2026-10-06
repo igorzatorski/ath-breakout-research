@@ -28,7 +28,8 @@ pgpass.conf
 
 # IDE and operating-system files
 .idea/
-.vscode/
+.vscode/*
+!.vscode/settings.json
 .DS_Store
 Thumbs.db
 
@@ -46,3 +47,6 @@ data/state/*
 # Runtime output
 logs/
 outputs/
+
+# Local historical experiment payload; archive index remains versioned
+archive/*/

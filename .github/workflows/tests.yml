@@ -9,7 +9,10 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
@@ -18,6 +21,6 @@ jobs:
       - name: Install locked environment
         run: uv sync --all-extras --locked
       - name: Check code quality
-        run: uv run ruff check src scripts tests
+        run: uv run ruff check src scripts run tests
       - name: Run tests
         run: uv run pytest -q

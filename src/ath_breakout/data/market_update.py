@@ -2,8 +2,10 @@
 
 from datetime import date, datetime, timedelta
 from pathlib import Path
+import time
 
 import pandas as pd
+from ath_breakout.progress import timing_suffix
 
 from ath_breakout.data.adapters.yfinance import download_yfinance_ohlcv
 from ath_breakout.data.preparation import prepare_ohlcv_data
@@ -39,6 +41,7 @@ def print_update_progress(
     successful: int,
     failed: int,
     total_securities: int | None = None,
+    started_at: float | None = None,
 ) -> None:
     """Print one timestamped progress line for the market-data update."""
     bar_width = 30
@@ -63,7 +66,8 @@ def print_update_progress(
         f"[{timestamp}] [{progress_bar}] {percentage:6.2f}% "
         f"batch {completed_batches:>{batch_width}}/{total_batches} | "
         f"success: {successful:>{security_width}} | "
-        f"failed: {failed:>{security_width}}",
+        f"failed: {failed:>{security_width}} | "
+        f"{timing_suffix(completed_batches, total_batches, started_at)}",
         flush=True,
     )
 
@@ -198,6 +202,7 @@ def update_market_data(
         len(securities) for securities in download_groups.values()
     )
     completed_batches = 0
+    progress_started = time.monotonic()
 
     print_update_progress(
         0,
@@ -205,6 +210,7 @@ def update_market_data(
         successful=0,
         failed=0,
         total_securities=total_securities,
+        started_at=progress_started,
     )
 
     for start_date, securities in download_groups.items():
@@ -330,6 +336,7 @@ def update_market_data(
                 int(successful_count),
                 int(failed_count),
                 total_securities=total_securities,
+                started_at=progress_started,
             )
 
     if total_batches == 0:
@@ -344,6 +351,7 @@ def update_market_data(
             successful=0,
             failed=0,
             total_securities=0,
+            started_at=progress_started,
         )
 
     return pd.DataFrame(manifest_rows)

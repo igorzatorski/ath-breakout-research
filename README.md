@@ -1,235 +1,137 @@
-# ATH Breakout Systematic
+# ATH Breakout Research
 
-A point-in-time systematic-equity research platform for studying all-time-high
-(ATH) breakouts in US stocks. It separates licensed historical research data
-from the current end-of-day screening feed and applies the same transparent
-signal definitions to both paths.
+A modular Python platform for researching all-time-high breakouts in US equities.
+The Data Layer and portfolio engine exist. The next task is an **unfiltered ATH
+signal study**, not another round of portfolio filter tuning.
 
-> **Research status:** the platform produces CRSP portfolio backtests and
-> current Yahoo Finance screens. The strategy has not completed robust
-> out-of-sample validation, paper trading, or broker integration and is not yet
-> a production trading system.
+Start with [the working guide](docs/START_HERE.md),
+[project status](docs/PROJECT_STATUS.md) and
+[the research protocol](research/ath/RESEARCH_PLAN.md).
 
-## Current status
+## Run files
 
-### Implemented and tested
+Open a file in `run/` and click **Run Python File** in VS Code. Every task uses
+this project's `.venv` and working directory automatically. No activation
+script, extra PowerShell window or execution-policy change is required.
 
-- reproducible Python 3.11 environment managed by `uv` and `uv.lock`;
-- WRDS credentials stored outside the repository in Windows Credential Manager;
-- resumable WRDS/CRSP extraction into yearly local Parquet partitions;
-- CRSP history beginning in 1993, stable PERMNO identity, ticker history,
-  corporate actions, distributions, delisting returns, and a pre-period ATH seed;
-- monthly point-in-time liquidity universe of approximately 3,000 securities;
-- strategy-ready partitions that carry ATH and moving-average state across years;
-- incremental Yahoo Finance end-of-day pipeline for the current screener;
-- shared OHLCV validation and strategy-feature definitions;
-- one-day screener with ranking and period screener with signal date and
-  next-session nominal opening price;
-- multi-asset CRSP backtester with next-session execution, costs, position
-  limits, delisting exits, SPY benchmark, CSV results, terminal report, and an
-  interactive Plotly dashboard;
-- compact strategy/benchmark statistics including volatility, Sharpe, drawdown,
-  beta, alpha, tracking error, information ratio, Sortino, and Calmar;
-- dashboard panels for normalized log-scale growth, both drawdowns, exposure,
-  rolling 21-session volatility, and monthly/yearly strategy-benchmark returns;
-- validation of manifests, source fingerprints, Parquet row counts, and actual
-  partition date bounds;
-- 235 passing automated tests at the latest local verification.
+| File | Purpose |
+| --- | --- |
+| `run/venv.py` | Create/synchronize the locked environment and verify dependencies |
+| `run/check_data.py` | Read-only local CRSP readiness check; start here tomorrow |
+| `run/update_data.py` | Check latest available CRSP date and update missing coverage |
+| `run/update_yahoo.py` | Update the separate Yahoo current-universe dataset |
+| `run/screen.py` | Existing current/date-selected ATH screener |
+| `run/screen_period.py` | Existing historical CRSP range screener |
+| `run/backtest.py` | Existing CRSP portfolio reference configuration |
+| `run/compare_backtests.py` | Compare saved results without rerunning simulations |
 
-The full CRSP preparation stage was reduced from about 24 minutes to about
-9 minutes on a cold run on the development machine. A persistent prepared-input
-cache reduces an otherwise identical full-period rerun to about 34 seconds.
-Exact regression comparisons confirmed that the optimizations did not change
-candidates, events, trades, the equity curve, or annual performance outputs.
+Use Python 3.11+ and [uv](https://docs.astral.sh/uv/). `run/venv.py` runs
+`uv sync --all-extras --locked`, including WRDS, Yahoo repair (`scikit-learn`)
+and development dependencies. `--check` verifies without installing.
+VS Code defaults to `.venv/Scripts/python.exe`; select this interpreter if the
+workspace already has a different saved interpreter. Recreate the old terminal
+once if an earlier launcher left a nested shell running.
 
-### Current limitations
-
-- local CRSP coverage currently ends on 2026-06-30 and is not a live feed;
-- the live Yahoo/IWV universe differs from the historical CRSP liquidity universe;
-- CRSP and Yahoo histories are not concatenated by ticker because their
-  identities and adjustment bases differ;
-- Yahoo Finance is a best-effort personal-use feed, not institutional market data;
-- the latest full baseline needs a focused review of its 34 stale-position
-  sessions before it can be frozen;
-- ranking weights and entry/exit filters are not validated out of sample;
-- there is no holdings ledger, paper-trading process, broker connection, or
-  automated execution;
-- outputs are research results, not buy or sell recommendations.
-
-## User-facing commands
-
-The normal workflow has three entry points:
+Equivalent Windows terminal commands, with no activation needed:
 
 ```powershell
-# Latest screen, or enter a completed historical date when prompted
-python scripts/run_screener.py
-
-# CRSP breakouts between two dates, with next-session entry prices
-python scripts/run_period_screener.py
-
-# Point-in-time CRSP portfolio backtest against SPY
-python scripts/run_backtest.py
+.\.venv\Scripts\python.exe run\venv.py --check
+.\.venv\Scripts\python.exe run\check_data.py
+.\.venv\Scripts\python.exe run\backtest.py --skip-crsp-check --start 2024-01-02 --end 2024-12-31 --no-open
+.\.venv\Scripts\python.exe run\screen.py --as-of 2024-01-02 --skip-crsp-check
 ```
 
-Press Enter in `run_backtest.py` to use the first supported SPY/CRSP date and
-the end date recorded by the local CRSP manifest. Acquisition, rebuilding,
-auditing, and compatibility commands live under `scripts/maintenance/` and
-`scripts/internal/`.
+For the first installation without `.venv`, run `uv sync --all-extras --locked`
+or execute `run/venv.py` with an available Python interpreter.
 
-The first run for a period stores prepared point-in-time prices and ranked
-signals under the ignored `data/cache/backtesting/` directory. Later runs with
-the same data, dates, and signal definition reuse that cache. Portfolio settings
-such as capital, costs, weights, and position limits can change without
-rebuilding signals. Changes to CRSP partitions, universe or delisting files,
-benchmark observations, feature code, dates, or signal-loader code create a new
-cache key automatically. To deliberately rebuild the same key, run:
-
-```powershell
-python scripts/run_backtest.py --start 1993-01-29 --end 2026-06-30 --rebuild-cache
-```
-
-## Environment
-
-Create or synchronize the repository-local environment:
-
-```powershell
-uv sync --all-extras
-```
-
-Run commands through `uv run`:
-
-```powershell
-uv run pytest -q
-uv run python scripts/run_backtest.py
-```
-
-Alternatively, activate the environment on Windows:
-
-```powershell
-.venv\Scripts\activate.bat
-```
-
-The environment, downloaded data, generated outputs, passwords, and local state
-are excluded from Git.
-
-## Data architecture
+## Organization
 
 ```text
-WRDS/CRSP
-  -> yearly raw Parquet partitions
-  -> schema, coverage, identity, return, and delisting audits
-  -> yearly strategy-ready partitions
-  -> point-in-time universe and candidate loader
-  -> portfolio backtester
-
-Yahoo Finance + current IWV holdings
-  -> incremental current-data update
-  -> canonical strategy features and quality report
-  -> latest one-day screener
+run/                    simple user launchers; no strategy logic
+scripts/
+  data/                 acquisition, validation, credentials, maintenance
+  screening/            current and historical screen commands
+  backtesting/          existing CRSP and Yahoo portfolio commands
+  research/             readiness and saved-run comparison commands
+src/ath_breakout/        reusable Data Layer, strategy, screening and portfolio code
+research/ath/           research protocol, planned baseline and trial registry
+docs/                   working guide, status, architecture and data contracts
+tests/                  infrastructure and accounting checks
+data/                   local observations, processed artifacts, state and caches
+outputs/                generated runs and comparisons; excluded from Git
+archive/                previous experiments and relocation indexes
 ```
 
-CRSP is authoritative for historical research. Yahoo Finance supplies current
-end-of-day observations for the live personal screener. Their raw histories
-remain separate. See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for module
-ownership.
+Detailed ownership and naming: [PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md).
+All active code, documentation and report messages use English.
 
-## Strategy and portfolio baseline
+## Data and automatic refresh
 
-The signal is a close above the true prior all-history high. The current day is
-excluded from the prior ATH, and an accepted close signal executes no earlier
-than the next available session open.
+The verified local CRSP coverage is 1993-01-01 through 2026-06-30. Availability
+is checked against WRDS rather than inferred from a calendar or release schedule.
+Historical membership uses a monthly liquidity selection of approximately
+3,000 stocks, not the official Russell 3000. PERMNO is the historical identity.
+Yahoo/IWV serves the separate current screener; the two sources are not joined
+by ticker. CRSP returns include distributions and delisting accounting.
 
-Features include trend structure and persistence, nominal dollar liquidity,
-ATR, gaps, extension, drawdown, consolidation duration and depth, contraction,
-rising lows, volume dry-up, relative strength, and breakout cooldown. The
-portfolio currently targets 3% per new position, holds at most 33 positions,
-charges 10 basis points per side, and applies the configured moving-average exit
-at the next tradable open. These are research assumptions, not optimized rules.
+The screen and backtest commands first check CRSP availability. Complete,
+validated local coverage is skipped. New coverage is acquired incrementally;
+stale derived artifacts can be rebuilt without redownloading current raw data.
+The current screener separately updates Yahoo data. `--skip-crsp-check` means
+explicit local-only CRSP use; it does not disable a live screener's Yahoo update.
 
-## Data maintenance
+Supply `--wrds-username YOUR_USERNAME` to screen/backtest commands, or
+`--username YOUR_USERNAME` to `run/update_data.py`. The username can also come
+from `WRDS_USERNAME` or ignored local settings. Passwords use the credential
+manager/WRDS authentication; they are never saved in run manifests.
+Connection failures stop the check. Deliberate vendor revision refreshes use
+an explicit downloader overwrite; automatic extension does not promise to
+find historical vendor corrections outside requested coverage.
 
-The quarterly WRDS refresh is run from the maintenance layer:
+## Saved results
 
-```powershell
-python scripts/maintenance/update_data_layer.py --username YOUR_WRDS_USERNAME
-```
-
-It downloads missing coverage, rebuilds affected strategy partitions, and
-validates the local layer. Licensed observations remain in ignored `data/`
-directories and must be handled under the applicable WRDS and institutional
-terms.
-
-The current Yahoo feed refreshes automatically when the latest screener runs.
-It downloads the required overlap for existing securities, fuller history for
-new securities, and records freshness and failures in the local quality report.
-
-## Backtest outputs
-
-Each CRSP run is written beneath:
+Each report gets a unique UTC run directory. Repeated runs never overwrite
+previous results. `manifest.json` records configuration, code and lock hashes,
+source-manifest/benchmark hashes, artifact hashes, timestamps and save status.
+The code hash identifies working-tree changes even before committing.
 
 ```text
-outputs/backtests/crsp/<START>_<END>/run_<TIMESTAMP>/
+outputs/
+  backtests/reference_ath_v001/<run_id>/
+  backtests/yahoo_current_universe_reference/<run_id>/
+  screens/<source_and_mode>/<run_id>/
+  comparisons/backtests/<run_id>/
+  research/ath/<study_id>/<run_id>/       future signal studies
 ```
 
-It contains `summary.csv`, `equity_curve.csv`, `trades.csv`, `events.csv`,
-`ranked_candidates.csv`, `annual_performance.csv`, and
-`interactive_dashboard.html`. The current valid
-full-period run covers 1993-01-29 through 2026-06-30. Runs extending beyond CRSP
-coverage, or predating accounting version 2, must not be used for conclusions.
+Backtests save summary, equity, annual performance, trades, events, candidates
+and an interactive SPY growth/drawdown dashboard. Metrics include CAGR,
+volatility, drawdown, Sharpe, Sortino, Calmar, alpha with HAC uncertainty,
+beta, exposure and costs. Sharpe/Sortino/alpha currently assume a zero
+risk-free rate. SPY is an S&P 500 total-return proxy, not the official index.
 
-## Development roadmap
+Run `run/compare_backtests.py` and paste directories separated by `|`, or pass
+`--runs DIR_A DIR_B`. It exports every summary column, normalized growth and
+drawdown charts, and warnings for differing periods, calendars, inputs,
+accounting or diagnostic subsets. Changed artifact hashes and incomplete runs
+are rejected. No automatic winner or alpha claim is produced.
 
-### 1. Freeze a trustworthy baseline — next
+## Research boundary and verification
 
-- explain or eliminate every stale-position session;
-- manually reconcile representative entries, exits, delistings, returns, and costs;
-- add experiment names, parameter snapshots, data fingerprints, Git commit hash,
-  and elapsed time to every run;
-- extend dashboard reporting with rolling performance, turnover, and deeper
-  trade-distribution diagnostics.
+The existing screener/backtest has prior strategy filters and scoring. It is a
+reference implementation, **not** the planned unfiltered signal baseline.
+The new event extractor and forward-return study are not implemented yet.
+Follow the protocol: signal baseline, individual features, simple portfolio,
+construction/risk changes, then chronological and forward validation.
 
-### 2. Build the research layer
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m ruff check src scripts run tests
+uv lock --check
+git diff --check
+```
 
-- benchmark and refine the persistent prepared-input cache as the research
-  workload grows;
-- define immutable train, validation, and final out-of-sample periods;
-- add walk-forward and market-regime evaluation;
-- analyze feature deciles and forward-return distributions;
-- run one-factor-at-a-time and ablation tests;
-- use bootstrap confidence intervals and multiple-testing controls;
-- test realistic fees, slippage, liquidity, and capacity.
-
-### 3. Research portfolio rules
-
-- compare SMA, ATR, trailing, time, and relative-strength exits while holding
-  the entry sample fixed;
-- optimize ranking only after individual features prove stable;
-- compare equal weight, volatility scaling, position limits, sector caps, and
-  portfolio risk controls;
-- develop any SPY/QQQ mean-reversion strategy as a separate module and then
-  measure its diversification benefit against the ATH trend strategy.
-
-### 4. Forward test and paper trade
-
-- add a persistent holdings and cash ledger;
-- generate deterministic proposed orders from the latest completed session;
-- reconcile assumed and realized fills;
-- run the daily workflow unattended with monitoring and failure alerts;
-- paper trade before considering live capital.
-
-### 5. Application and broker integration
-
-- build a Streamlit control panel for data health, candidates, holdings, orders,
-  exposure, performance, and audit history;
-- connect to IBKR in read-only mode first;
-- add manually approved paper orders, idempotency, risk limits, and a kill switch;
-- permit automated execution only after stable forward-test evidence and
-  operational controls exist.
-
-## Research discipline
-
-Parameter combinations must not be selected from the same period used to report
-their performance. Statistical significance alone is insufficient: findings
-must remain economically meaningful across regimes, costs, neighboring
-parameters, and untouched out-of-sample data. The final holdout should remain
-unseen until the research process and decision rules are frozen.
+CI runs tests/lint on Windows and Linux. Live WRDS/Yahoo downloads are not CI
+tests. Market data, generated outputs, caches, credentials and archive payloads
+stay local; code, contracts, protocol and archive indexes are versioned.
+See [the archive guide](archive/README.md) before restoring old experiments.
