@@ -3,6 +3,7 @@
 from datetime import date, timedelta
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import yfinance as yf
 
@@ -18,15 +19,27 @@ CANONICAL_COLUMNS = list(REQUIRED_OHLCV_COLUMNS) + [
     "prices_split_adjusted",
 ]
 
+_configured_cache = None
+_warmed_caches = set()
+
+
+def configure_yahoo_cache(directory):
+    """Avoid repeatedly reopening SQLite caches between download batches."""
+    global _configured_cache
+    path = Path(directory).resolve()
+    path.mkdir(parents=True, exist_ok=True)
+    if path != _configured_cache:
+        yf.set_tz_cache_location(str(path))
+        _configured_cache = path
+    return path
+
 
 def yahoo_session_is_available(
     session: date,
     ticker: str = "SPY",
 ) -> bool:
     """Return whether Yahoo already publishes a daily row for one session."""
-    cache = Path("data/cache/yfinance")
-    cache.mkdir(parents=True, exist_ok=True)
-    yf.set_tz_cache_location(str(cache))
+    cache_path = configure_yahoo_cache("data/cache/yfinance")
     end_date = session + timedelta(days=1)
     try:
         data = yf.download(
@@ -40,6 +53,7 @@ def yahoo_session_is_available(
             threads=False,
             progress=False,
             multi_level_index=True,
+            timeout=30,
         )
     except Exception:
         return False
@@ -47,8 +61,13 @@ def yahoo_session_is_available(
     if data is None or len(data) == 0:
         return False
 
-    downloaded_dates = pd.to_datetime(data.index).date
-    return session in downloaded_dates
+    try:
+        normalized, failed = normalize_yfinance_download(data, [ticker])
+    except (TypeError, ValueError):
+        return False
+    if not failed:
+        _warmed_caches.add(cache_path)
+    return not failed and session in set(normalized["date"].dt.date)
 
 
 def normalize_yfinance_download(
@@ -58,19 +77,67 @@ def normalize_yfinance_download(
     """Convert a multi-ticker Yahoo table to the canonical long format."""
     normalized_tables = []
     failed_tickers = []
+    if raw_data is None or not isinstance(raw_data, pd.DataFrame) or raw_data.empty:
+        return pd.DataFrame(columns=CANONICAL_COLUMNS), list(dict.fromkeys(tickers))
 
-    for ticker in tickers:
-        if ticker not in raw_data.columns.get_level_values(0):
+    for ticker in dict.fromkeys(tickers):
+        if isinstance(raw_data.columns, pd.MultiIndex):
+            level = next(
+                (
+                    index
+                    for index in range(raw_data.columns.nlevels)
+                    if ticker.upper()
+                    in {
+                        str(value).upper()
+                        for value in raw_data.columns.get_level_values(index)
+                    }
+                ),
+                None,
+            )
+            if level is None:
+                failed_tickers.append(ticker)
+                continue
+            symbol = next(
+                value
+                for value in raw_data.columns.get_level_values(level)
+                if str(value).upper() == ticker.upper()
+            )
+            ticker_data = raw_data.xs(symbol, axis=1, level=level).copy()
+        elif len(set(tickers)) == 1:
+            ticker_data = raw_data.copy()
+        else:
             failed_tickers.append(ticker)
             continue
-
-        ticker_data = raw_data[ticker].copy()
-        ticker_data = ticker_data.dropna(how="all")
+        ticker_data.columns = [
+            str(column).lower().replace(" ", "_").replace("?", "")
+            for column in ticker_data.columns
+        ]
+        # A multi-ticker outer join adds empty rows outside a ticker's own history.
+        prices = [
+            name
+            for name in ("open", "high", "low", "close", "volume")
+            if name in ticker_data
+        ]
+        actions = [
+            name for name in ("dividends", "stock_splits") if name in ticker_data
+        ]
+        if prices:
+            empty_prices = ticker_data[prices].isna().all(axis=1)
+            has_action = (
+                ticker_data[actions].fillna(0).ne(0).any(axis=1)
+                if actions
+                else pd.Series(False, index=ticker_data.index)
+            )
+            ticker_data = ticker_data.loc[~(empty_prices & ~has_action)]
 
         if len(ticker_data) == 0:
             failed_tickers.append(ticker)
             continue
 
+        ticker_data.index = pd.DatetimeIndex(pd.to_datetime(ticker_data.index))
+        if ticker_data.index.tz is not None:
+            ticker_data.index = ticker_data.index.tz_localize(None)
+        ticker_data.index.name = "date"
         ticker_data = ticker_data.reset_index()
         ticker_data.columns = [
             str(column).lower().replace(" ", "_").replace("?", "")
@@ -81,6 +148,22 @@ def normalize_yfinance_download(
         ticker_data["prices_split_adjusted"] = True
 
         try:
+            numeric = [
+                name
+                for name in (
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume",
+                    "adj_close",
+                    "dividends",
+                    "stock_splits",
+                )
+                if name in ticker_data
+            ]
+            if not np.isfinite(ticker_data[numeric].to_numpy(dtype=float)).all():
+                raise ValueError("Yahoo returned non-finite prices, volume or actions")
             ticker_data = prepare_ohlcv_data(ticker_data)
         except (KeyError, TypeError, ValueError):
             failed_tickers.append(ticker)
@@ -108,16 +191,32 @@ def download_yfinance_ohlcv(
     """Download tickers in batches and return validated canonical data."""
     if batch_size <= 0:
         raise ValueError("batch_size must be greater than zero")
+    start, end = pd.Timestamp(start_date), pd.Timestamp(end_date)
+    if start >= end:
+        raise ValueError("start_date must precede exclusive end_date")
+    if (
+        required_session is not None
+        and not start.date() <= required_session < end.date()
+    ):
+        raise ValueError("required_session must be inside the requested date range")
+    tickers = list(dict.fromkeys(tickers))
 
     successful_tables = []
     failed_tickers = []
-    cache_path = Path(cache_directory)
-    cache_path.mkdir(parents=True, exist_ok=True)
-    yf.set_tz_cache_location(str(cache_path))
+    cache_path = configure_yahoo_cache(cache_directory)
+    # Initialize Yahoo's SQLite/cookie caches serially before worker threads.
+    # This is a normal request, not a discarded warm-up download.
+    batches = []
+    remaining = tickers
+    if tickers and cache_path not in _warmed_caches:
+        batches.append(tickers[:1])
+        remaining = tickers[1:]
+    batches.extend(
+        remaining[index : index + batch_size]
+        for index in range(0, len(remaining), batch_size)
+    )
 
-    for batch_start in range(0, len(tickers), batch_size):
-        ticker_batch = tickers[batch_start : batch_start + batch_size]
-
+    for ticker_batch in batches:
         try:
             raw_batch = yf.download(
                 tickers=ticker_batch,
@@ -128,27 +227,35 @@ def download_yfinance_ohlcv(
                 auto_adjust=False,
                 actions=True,
                 repair=True,
-                threads=True,
+                threads=cache_path in _warmed_caches and len(ticker_batch) > 1,
                 progress=False,
                 multi_level_index=True,
+                timeout=30,
             )
         except Exception:
             failed_tickers.extend(ticker_batch)
             continue
+        if raw_batch is not None and not raw_batch.empty:
+            _warmed_caches.add(cache_path)
 
         normalized_batch, missing_tickers = normalize_yfinance_download(
             raw_batch,
             ticker_batch,
         )
+        normalized_batch = normalized_batch.loc[
+            (normalized_batch["date"] >= start) & (normalized_batch["date"] < end)
+        ]
+        available_after_bounds = set(normalized_batch["ticker"])
+        missing_tickers.extend(
+            ticker for ticker in ticker_batch if ticker not in available_after_bounds
+        )
         if required_session is not None and len(normalized_batch) > 0:
-            latest_dates = normalized_batch.groupby("ticker")["date"].max()
-            stale_tickers = [
-                ticker
-                for ticker in ticker_batch
-                if ticker in latest_dates.index
-                and pd.Timestamp(latest_dates[ticker]).date()
-                < required_session
-            ]
+            present = set(
+                normalized_batch.loc[
+                    normalized_batch["date"].dt.date == required_session, "ticker"
+                ]
+            )
+            stale_tickers = [ticker for ticker in ticker_batch if ticker not in present]
             missing_tickers.extend(stale_tickers)
             normalized_batch = normalized_batch[
                 ~normalized_batch["ticker"].isin(stale_tickers)
@@ -187,11 +294,15 @@ def download_yfinance_ohlcv(
                 threads=False,
                 progress=False,
                 multi_level_index=True,
+                timeout=30,
             )
             normalized_retry, retry_failures = normalize_yfinance_download(
                 raw_retry,
                 [ticker],
             )
+            normalized_retry = normalized_retry.loc[
+                (normalized_retry["date"] >= start) & (normalized_retry["date"] < end)
+            ]
         except Exception:
             failed_tickers.append(ticker)
             continue
@@ -200,10 +311,8 @@ def download_yfinance_ohlcv(
             failed_tickers.append(ticker)
             continue
 
-        if (
-            required_session is not None
-            and pd.to_datetime(normalized_retry["date"]).max().date()
-            < required_session
+        if required_session is not None and required_session not in set(
+            normalized_retry["date"].dt.date
         ):
             failed_tickers.append(ticker)
             continue

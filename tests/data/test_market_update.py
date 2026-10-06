@@ -81,9 +81,7 @@ def test_full_refresh_replaces_old_schema_instead_of_merging(
     tmp_path,
     monkeypatch,
 ) -> None:
-    universe = pd.DataFrame(
-        {"security_id": ["AAPL"], "ticker": ["AAPL"]}
-    )
+    universe = pd.DataFrame({"security_id": ["AAPL"], "ticker": ["AAPL"]})
     raw_file = tmp_path / "raw" / "AAPL.parquet"
     save_security_data(
         make_prices(["2020-01-02"], [50.0]),
@@ -124,9 +122,7 @@ def test_manual_full_refresh_redownloads_and_replaces_complete_history(
     tmp_path,
     monkeypatch,
 ) -> None:
-    universe = pd.DataFrame(
-        {"security_id": ["AAPL"], "ticker": ["AAPL"]}
-    )
+    universe = pd.DataFrame({"security_id": ["AAPL"], "ticker": ["AAPL"]})
     raw_file = tmp_path / "raw" / "AAPL.parquet"
     old_data = make_prices(["2020-01-02"], [50.0])
     old_data["adj_close"] = old_data["close"]
@@ -160,9 +156,7 @@ def test_manual_full_refresh_redownloads_and_replaces_complete_history(
     result = load_security_data(raw_file)
 
     assert download_arguments["start_date"] == "1900-01-01"
-    assert result["date"].dt.strftime("%Y-%m-%d").tolist() == [
-        "2020-01-03"
-    ]
+    assert result["date"].dt.strftime("%Y-%m-%d").tolist() == ["2020-01-03"]
     assert result["close"].tolist() == [101.0]
 
 
@@ -170,9 +164,7 @@ def test_failed_full_refresh_preserves_existing_history(
     tmp_path,
     monkeypatch,
 ) -> None:
-    universe = pd.DataFrame(
-        {"security_id": ["AAPL"], "ticker": ["AAPL"]}
-    )
+    universe = pd.DataFrame({"security_id": ["AAPL"], "ticker": ["AAPL"]})
     raw_file = tmp_path / "raw" / "AAPL.parquet"
     old_data = make_prices(["2020-01-02"], [50.0])
     old_data["adj_close"] = old_data["close"]
@@ -202,9 +194,7 @@ def test_failed_full_refresh_preserves_existing_history(
     preserved = load_security_data(raw_file)
 
     assert manifest["status"].tolist() == ["failed"]
-    assert preserved["date"].dt.strftime("%Y-%m-%d").tolist() == [
-        "2020-01-02"
-    ]
+    assert preserved["date"].dt.strftime("%Y-%m-%d").tolist() == ["2020-01-02"]
     assert preserved["close"].tolist() == [50.0]
 
 
@@ -254,9 +244,7 @@ def test_updates_raw_processed_and_manifest(tmp_path, monkeypatch) -> None:
     )
 
     raw_data = load_security_data(tmp_path / "raw" / "AAPL.parquet")
-    processed_data = load_security_data(
-        tmp_path / "processed" / "AAPL.parquet"
-    )
+    processed_data = load_security_data(tmp_path / "processed" / "AAPL.parquet")
 
     assert len(raw_data) == 2
     assert "prior_ath" not in raw_data.columns
@@ -318,9 +306,7 @@ def test_download_through_includes_the_selected_session(
     tmp_path,
     monkeypatch,
 ) -> None:
-    universe = pd.DataFrame(
-        {"security_id": ["AAPL"], "ticker": ["AAPL"]}
-    )
+    universe = pd.DataFrame({"security_id": ["AAPL"], "ticker": ["AAPL"]})
     download_arguments = {}
 
     def fake_download(**kwargs):
@@ -361,9 +347,7 @@ def test_rejects_empty_universe(tmp_path) -> None:
 
 
 def test_rejects_non_positive_update_batch_size(tmp_path) -> None:
-    universe = pd.DataFrame(
-        {"security_id": ["AAPL"], "ticker": ["AAPL"]}
-    )
+    universe = pd.DataFrame({"security_id": ["AAPL"], "ticker": ["AAPL"]})
 
     with pytest.raises(ValueError, match="batch_size must be greater than zero"):
         update_market_data(
@@ -452,19 +436,20 @@ def test_invalid_security_does_not_stop_other_securities(
     assert statuses == {"AAPL": "success", "BROKEN": "failed"}
     assert (tmp_path / "raw" / "AAPL.parquet").exists()
     assert not (tmp_path / "raw" / "BROKEN.parquet").exists()
-    assert "Missing values found in column: adj_close" in manifest.loc[
-        manifest["ticker"] == "BROKEN",
-        "error",
-    ].iloc[0]
+    assert (
+        "Missing values found in column: adj_close"
+        in manifest.loc[
+            manifest["ticker"] == "BROKEN",
+            "error",
+        ].iloc[0]
+    )
 
 
 def test_failed_security_is_deferred_and_recovers_on_retry_date(
     tmp_path,
     monkeypatch,
 ) -> None:
-    universe = pd.DataFrame(
-        {"security_id": ["AAPL"], "ticker": ["AAPL"]}
-    )
+    universe = pd.DataFrame({"security_id": ["AAPL"], "ticker": ["AAPL"]})
     manifest_file = tmp_path / "manifest.csv"
     download_calls = []
 
@@ -521,3 +506,62 @@ def test_failed_security_is_deferred_and_recovers_on_retry_date(
     assert recovered_result.loc[0, "failure_count"] == 0
     assert pd.isna(recovered_result.loc[0, "next_retry_date"])
     assert len(download_calls) == 2
+
+
+@pytest.mark.parametrize("revision_failure", [False, True, "truncated"])
+def test_revised_basis_refreshes_full_history_or_preserves_old_files(
+    tmp_path, monkeypatch, revision_failure
+):
+    universe = pd.DataFrame({"security_id": ["AAPL"], "ticker": ["AAPL"]})
+    raw_file = tmp_path / "raw/AAPL.parquet"
+    processed_file = tmp_path / "processed/AAPL.parquet"
+    old = make_prices(["2024-01-02", "2024-01-03"], [100.0, 102.0])
+    old["adj_close"] = old["close"]
+    old["dividends"] = old["stock_splits"] = 0.0
+    old["repaired"] = False
+    save_security_data(old, raw_file)
+    save_security_data(old, processed_file)
+    raw_before, processed_before = raw_file.read_bytes(), processed_file.read_bytes()
+    overlap = make_prices(["2024-01-03", "2024-01-04"], [51.0, 52.0])
+    full = make_prices(["2024-01-02", "2024-01-03", "2024-01-04"], [50.0, 51.0, 52.0])
+    calls = []
+
+    def download(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return overlap, []
+        if revision_failure is True:
+            return pd.DataFrame(), ["AAPL"]
+        return (full.iloc[1:].copy() if revision_failure == "truncated" else full), []
+
+    monkeypatch.setattr(
+        "ath_breakout.data.market_update.download_yfinance_ohlcv", download
+    )
+    manifest = update_market_data(
+        universe,
+        tmp_path / "raw",
+        tmp_path / "processed",
+        tmp_path / "manifest.csv",
+        today=date(2024, 1, 5),
+    )
+    assert len(calls) == 2 and calls[1]["start_date"] == "1900-01-01"
+    if revision_failure:
+        assert manifest.iloc[0]["status"] == "failed"
+        assert (
+            raw_file.read_bytes() == raw_before
+            and processed_file.read_bytes() == processed_before
+        )
+    else:
+        assert manifest.iloc[0]["status"] == "success"
+        assert load_security_data(raw_file)["close"].tolist() == [50.0, 51.0, 52.0]
+
+
+def test_new_dividend_without_overlap_requires_revision():
+    from ath_breakout.data.market_update import history_requires_revision
+
+    old = make_prices(["2024-01-02"], [100.0])
+    new = make_prices(["2024-01-03"], [101.0])
+    new["dividends"] = 0.5
+    assert history_requires_revision(old, new)
+    new["dividends"] = 0.0
+    assert not history_requires_revision(old, new)

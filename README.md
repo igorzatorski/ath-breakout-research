@@ -135,3 +135,27 @@ CI runs tests/lint on Windows and Linux. Live WRDS/Yahoo downloads are not CI
 tests. Market data, generated outputs, caches, credentials and archive payloads
 stay local; code, contracts, protocol and archive indexes are versioned.
 See [the archive guide](archive/README.md) before restoring old experiments.
+
+## Yahoo download hardening — 2026-10-06
+
+The updater checks revisions in overlapping OHLC, adjusted close, volume and
+corporate actions (within numerical tolerance). A detected revision or new
+split/dividend triggers a full-history request for that ticker before replacing
+its stored basis. Failed or boundary-truncated revision downloads preserve the
+previous raw and processed files. Vendor revisions outside the overlap without
+a newly observed corporate action can still go undetected; use explicit full
+refresh when a deliberate complete revision check is needed.
+
+Yahoo responses are normalized across flat and both MultiIndex layouts, with
+local session dates, exact required-session checks, request bounds, duplicate
+request removal and finite-value checks. The first fresh-cache request is
+serial before enabling workers, reducing SQLite initialization contention.
+Retries remain bounded; unavailable/delisted ticker histories remain failures.
+
+In an interactive terminal downloads show a Rich spinner/bar, percentage,
+completed securities, elapsed time, ETA, successes and failures. Animation
+continues while a request is running. Redirected/dumb-terminal output remains
+plain batch lines without terminal-control sequences. ETA is an estimate,
+initially unknown, and includes validation/saving and revision-request overhead.
+Upstream yfinance repair warnings remain visible; repair is not a guarantee
+that the source history is correct. Invalid numerical outputs are rejected.

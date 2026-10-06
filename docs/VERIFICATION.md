@@ -22,3 +22,23 @@ Completed locally on Windows with Python 3.11.14 and the locked project `.venv`.
 Diagnostic runs stay under `outputs/diagnostics/backtests/`, excluded from Git.
 They are not registered research results. Existing accounting/economic tests
 remain in the full suite. The unfiltered event extractor is not implemented.
+
+## Yahoo download follow-up
+
+- Rich animation checks exercise refresh while a request is idle, completion,
+  elapsed/ETA display and success/failure counts.
+- Regression checks cover response layouts, timezone-local dates, non-finite
+  values, alignment padding, exact required sessions, duplicate requests,
+  date bounds, history revisions and preservation after failed/truncated refresh.
+- Fresh Yahoo cache initialization is serial before batch worker use; repeated
+  calls do not reopen the same cache location.
+- Live AAPL, BC and SPY checks returned 27 rows for 2024-01-02 through
+  2024-01-12, with no final failures. A separate AAPL update saved raw, processed
+  and manifest files in an isolated ignored smoke store.
+- ATAI had no Yahoo history for that selected period and was correctly reported
+  failed; valid tickers continued. The earlier fresh-cache lock was recovered
+  by retry; repeating after serial initialization emitted no lock error.
+- These checks leave the research price store unchanged. Source outages and
+  upstream repair warnings remain possible and are not silently hidden.
+- Final follow-up suite: 275 tests passed; Ruff, locked dependency check and
+  Git whitespace check passed. The environment check includes Rich.

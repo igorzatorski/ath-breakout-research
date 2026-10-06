@@ -23,7 +23,7 @@ def main(arguments=None):
         print('Project .venv is missing. Run this script without --check.')
         return 1
     probe = (
-        "import sys,pandas,pyarrow,plotly,yfinance,sklearn,wrds,keyring,pytest,ruff; "
+        "import sys,pandas,pyarrow,plotly,yfinance,sklearn,wrds,keyring,pytest,ruff,rich; "
         "print('Environment ready: '+sys.executable); "
         "print('scikit-learn: '+sklearn.__version__)"
     )
