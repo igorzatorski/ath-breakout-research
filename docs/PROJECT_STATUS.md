@@ -1,10 +1,13 @@
-# Project status — 2026-10-06
+# Project status — 2026-10-15
 
 ## Current position
 
-The project has moved from Data Layer construction to preparation for quant
-research. No new unfiltered ATH event study has been implemented or run.
-Prior strategy performance does not establish an ATH premium or alpha.
+The project is studying the signal itself: unfiltered ATH forward returns versus
+same-date SPY and five size/volatility matched non-ATH stocks. No current portfolio,
+exit or filter optimization. The completed conditional 1994-2026 study has a
+small positive 21-session event-weighted excess, but intervals include zero and
+period/weighting sensitivity prevents a confirmed repeatable-premium claim.
+See `research/ath/ATH_SIGNAL_STUDY_RESULTS.md` and `RESEARCH_MAP.md`.
 
 ## Available infrastructure
 
@@ -26,15 +29,14 @@ historical CRSP repair report remains evidence for the previous review.
 
 ## Next research deliverable
 
-Implement `ath_01_signal_baseline_v001` as a short-period event export from
-appropriate PIT data. Audit pre-period ATH seeds, processed-data exclusions,
-next-session observed openings, splits, repeated breakouts and censoring.
-The current candidate loader applies prior strategy filters and cannot be
-used unchanged as the unfiltered baseline.
-
-After event verification, study 5/21/63/126-session total returns with 21 as
-the primary horizon, aligned SPY execution and size/volatility matched controls.
-Then study individual features; construct a simple portfolio only after that.
+Audit the large history-quality selection and concentration in repeated events
+before extending conclusions or introducing new hypotheses. The authorized WRDS
+retry produced an isolated true-high seed without overwriting the legacy seed.
+Missing historical highs still restrict the primary sample; this is not a
+complete-market ATH study. The standalone study uses raw observations, not the
+previous strategy-filtered candidate loader. All four planned horizons and
+matched controls are calculated; 21 remains primary. Earlier 2024 exit pilots
+are retained as exploratory trials, not the current research scope.
 
 ## Before interpreting performance
 

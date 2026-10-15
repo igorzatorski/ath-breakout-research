@@ -1,8 +1,9 @@
 # ATH Breakout Research
 
 A modular Python platform for researching all-time-high breakouts in US equities.
-The Data Layer and portfolio engine exist. The next task is an **unfiltered ATH
-signal study**, not another round of portfolio filter tuning.
+The Data Layer and portfolio engine exist. The current focus is an **unfiltered
+ATH signal study**, without portfolio, stop or filter tuning. The conditional
+1994-2026 study is implemented; see [results and limitations](research/ath/ATH_SIGNAL_STUDY_RESULTS.md).
 
 Start with [the working guide](docs/START_HERE.md),
 [project status](docs/PROJECT_STATUS.md) and
@@ -120,7 +121,8 @@ are rejected. No automatic winner or alpha claim is produced.
 
 The existing screener/backtest has prior strategy filters and scoring. It is a
 reference implementation, **not** the planned unfiltered signal baseline.
-The new event extractor and forward-return study are not implemented yet.
+The new standalone signal study and matched controls are implemented, with
+explicit historical-quality selection and uncertainty; they do not establish alpha.
 Follow the protocol: signal baseline, individual features, simple portfolio,
 construction/risk changes, then chronological and forward validation.
 
