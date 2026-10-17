@@ -1,0 +1,13 @@
+# Annual return distribution and post-entry paths
+
+Descriptive question: do a small number of very large winners drive ATH event returns, and would some of those winners have first crossed adverse closing-wealth levels?
+
+Primary: frozen ATH + common 6-1/top20 annual stock/SPY pairs (23,712). Context: all qualified ATH annual stock/SPY pairs (71,961), plus original nonoverlap and fixed historical periods. No new filter, ranking, stop, exit or portfolio rule is tested. Existing source event IDs, outcome exclusions, entry, annual endpoint and nonoverlap flags stay unchanged.
+
+Reconstruct 252 closing total-wealth observations from next-session open: first close/open, then subsequent CIZ total returns including distributions; terminal CIZ return applied once, cash thereafter at zero interest. Only original complete annual pairs enter path summaries. Reconcile every endpoint with frozen stock return. Wealth includes initial capital 1 for excursion calculations. These are closing-wealth diagnostics, not intraday price MAE/MFE or executable stops; ex-entry dividends, gaps, splits and terminal treatment follow the existing return convention.
+
+Report full return bins, quantiles, means/medians, profit/loss means, SPY excess, right-tail contributions and outcome-selected top1/top5 influence diagnostics. Tail contribution is sum of tail returns / all parent events, not a portfolio P&L or a causal source of alpha. Retrospective omission of large winners is not an entry rule. Distinguish realized final >=50/100/200/300% from ever reaching those levels during the window. Report MAE from entry, MFE and peak-to-trough drawdown, first session reaching thresholds and minimum wealth before first reaching them. Initial investment is included; first threshold hit uses closing wealth and session 1 is entry close.
+
+For final >=100/200/300% winners, count crossing closing-wealth losses of 10/20/30% before first reaching the respective profit level. These are hindsight-conditional counts illustrating potential winner truncation, not stop-loss backtests. Do not infer that all losers could be cut cheaply, winners identified in advance, or closes traded without gaps/costs. No optimization or return-distribution significance test is performed.
+
+Keep all loss and positive-tail bins, including overflow; figures show event-weighted distributions with counts. Record missing/censored source signals separately. Save path matrices by signal year, summary tables, aggregates, code/source hashes and independent endpoint/path checks. No untouched validation or portfolio-capital interpretation is supplied.

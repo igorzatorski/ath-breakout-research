@@ -9,6 +9,12 @@ Start with [the working guide](docs/START_HERE.md),
 [project status](docs/PROJECT_STATUS.md) and
 [the research protocol](research/ath/RESEARCH_PLAN.md).
 
+## Language convention
+
+All quant research artifacts are maintained in English: Python code, comments,
+docstrings, messages, research notes, Markdown documentation, generated reports,
+and related Notion pages. Conversation language is independent of this convention.
+
 ## Run files
 
 Open a file in `run/` and click **Run Python File** in VS Code. Every task uses

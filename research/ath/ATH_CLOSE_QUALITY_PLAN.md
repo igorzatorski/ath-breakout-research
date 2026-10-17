@@ -1,0 +1,13 @@
+# Breakout-day closing location: four exploratory thresholds
+
+Question: within the frozen ATH + common 6-1/top20 population, does closing nearer the signal session's high improve subsequent annual outcomes?
+
+Feature Q = (close-low)/(high-low), using signal-day raw prices on the same basis. Within-row positive common split rescaling leaves Q unchanged. Require finite positive high/low/close, high >= low, low <= close <= high and high > low. Missing/nonpositive prices, inconsistent OHLC and zero-range sessions are separate audit categories. Do not clip invalid observations or assign flat sessions Q=1. Zero-range cases are reported separately with original outcomes. The feature is known after the signal close; execution remains next observed open, so the breakout-day gain is not earned by the studied position.
+
+Freeze four cumulative thresholds: Q >=0.50, >=0.70, >=0.85, >=0.95, inclusive with comparison tolerance 1e-12. Full original annual reference is 23,712 stock/SPY pairs, +5.58 pp SPY excess. Primary comparisons use the same feature-observed reference for all thresholds; show original, observed, flat and other-invalid availability separately. Preserve all 25,250 original source events before annual exclusions. Do not change ATH, momentum ranks/top20, historical universe, next-open entry, 252-session return, distributions, terminal cash or original nonoverlap flags.
+
+No volume, range, proximity or other entry condition is combined. No gap, candle-body, breakout strength or high/low intraday sequence rule is tested. Closing location is a geometric measure, not demonstrated buying pressure or a causal confirmation signal.
+
+Report every threshold's count, stock/SPY/excess means, difference versus common observed base, median stock/excess, losses, skewness, >=100/200/300% winner frequencies and retention, equal-company/date means, existing periods/years and original nonoverlap. Nonoverlapping Q bands <0.50, [0.50,0.70), [0.70,0.85), [0.85,0.95), >=0.95 are descriptive accounting; no extra inferential search. Save exact adjacent threshold changes.
+
+Joint approximate crossed event-company/circular signal-date block bootstrap: 2,000 draws, seed 20261016, blocks 252/504. Common weights for base and four filters. Pointwise and centered max-absolute-deviation simultaneous four-improvement bands require 95% complete-family support. Main all-event full-period improvements form the primary family; other cuts are sensitivities/descriptive. Missing support remains explicit. Bands do not correct earlier hypotheses or guarantee calibrated coverage. All history is inspected; no optimum, independent validation, risk-adjusted alpha or portfolio/exit result is established.

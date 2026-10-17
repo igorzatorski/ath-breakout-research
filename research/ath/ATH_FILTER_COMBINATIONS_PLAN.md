@@ -1,0 +1,25 @@
+# Candidate overlap and bounded filter combinations
+
+ATH26 exploratory study, authorized2026-10-17. Objective: measure overlap and conditional mean-return information among previously inspected candidate entry features. Momentum6-1/top20 is the fixed foundation, not another tunable dimension. Original annual next-open stock/SPY outcomes and nonoverlap flags stay frozen. No exits, portfolio construction, ranking-based weights or allocation to cash.
+
+Four dimensions, each off/neighbor/main, define exactly81 configurations including baseline:
+- C: closing-range contraction; neighbor42+42 sessions ratio<=0.75; main63+63 ratio<=0.75.
+- V: breakout-day volume / prior63-session mean; neighbor>=1.5x; main>=2x.
+- A: time since creation of prior ATH; neighbor>=126 sessions; main>=252 sessions, with existing conservative seed-date bounds.
+- B: signal-close overshoot / strictly prior simpleATR20; neighbor>=0.5; main>=1.0.
+
+Main16 combinations use only off/main in each dimension. Main definitions are representatives chosen from prior inspected studies, NOT ex ante discoveries or known optima. The81 configurations include main16 and fixed neighbors; do not extend this grid after outcomes or silently combine other features. Require common observed support across the eight feature settings, explicitly reconcile source25,250 and original23,712 annual pairs. Join only validated source event IDs and check frozen outcomes/ranks/identities and SHA256 hashes. No fresh WRDS connection or price download is required.
+
+Report overlap for all eight individual indicators: counts, intersections, union/Jaccard, both conditional selection rates, phi association. Save exact16 main pass/fail signatures and number-of-main-passes buckets as descriptive partitions, not optimized score strategies. C42 andC63 are neighboring definitions, not nested windows whose membership must be ordered.
+
+Report all81 configurations by all-event and original company nonoverlap, overall, frozen early/middle/recent periods and signal year: counts, companies, stock/SPY/excess means, improvement vs same common reference, median stock/excess, losses, sample skew, equal-company/date means, >=100/200/300% winner frequency/count/retention and each tail's contribution to overall stock mean. Flag events<200 or companies<50 as limited support; do not discard or hide them. Descriptive sparse cells are not credible optima. Empty groups stay empty, never zero returns.
+
+Concentration diagnostics for every configuration: top1/top5 company contribution shares when net excess sum is positive, effective company count, leave-one-company and leave-one-signal-year excess ranges, removal of largest five positive-contributing companies as a hindsight stress test only (not a trading rule). Show positive-tail concentration, not merely the mean. Describe all diagnostics as conditional associations, not causal isolated feature effects.
+
+Exactly404 contrasts reuse joint bootstrap draws:80 configurations minus baseline;216 additions of one feature (off to either fixed setting, across all27 other-dimension states);108 replacement contrasts (neighbor to main, across all27 other states). Main16 baseline family has15 contrasts and main-addition family32 of the216. Pointwise approximate intervals plus simultaneous bands for15 main baseline contrasts,80 grid baseline contrasts,32 main additions and all404 planned contrasts. A family band is available only with>=95% complete draws across that entire family; keep unavailable flags if sparse/empty cells prevent it. Do not drop the troublesome cells to obtain a favorable band. These corrections do not include the entire prior research search or fix retrospective candidate choice.
+
+Crossed company/circular-time bootstrap remains an approximate diagnostic:2,000 draws, seed20261017,252/504-session blocks, original all-event and nonoverlap samples, shared draws for all configurations and contrasts. Store draws to permit independent reconciliation. No calibrated nominal-coverage claim or automatic significance-only pass/fail rule. Positive historical means, strong gradients, economic sizes, repetition/period sensitivity and uncertainty must be read together.
+
+All existing history has been inspected; no current period may be labeled untouched holdout. Do not claim exhaustive research of all conceivable filter settings, independent alpha, or a net executable portfolio. This is the full fixed81-configuration neighborhood, not all combinations of every previous parameter grid. Select no deployable rule solely from the largest cell.
+
+Independent verification: reconcile raw prior feature artifacts and event IDs/outcomes; rebuild each membership with separate direct comparisons, all81 intersection sets, exact signatures and score partition, overlap counts, all summary/tail/concentration aggregates, conditional contrast definitions and stored-draw percentile/family intervals. Focused tests should cover Boolean intersections, parent-child edges, nonnestedC neighbors, empty groups, shared-draw contrasts and simultaneous-family unavailability. Record all outcomes and English documentation/Notion updates.
