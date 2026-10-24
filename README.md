@@ -9,6 +9,15 @@ Start with [the working guide](docs/START_HERE.md),
 [project status](docs/PROJECT_STATUS.md) and
 [the research protocol](research/ath/RESEARCH_PLAN.md).
 
+## Independent research tracks
+
+- [Trend Following on Futures](research/trend_following_futures/README.md):
+  separate long/short time-series momentum research; first 17-market research
+  prototype and SPY comparison, with explicit data/execution limitations.
+- [Smoothed Heikin Ashi](research/smoothed_heikin_ashi/README.md): separate Python
+  indicator and trend-following research; first SPY EMA(10,10) baseline available.
+- [Index mean reversion](research/zscore/README.md): separate SPY / QQQ studies.
+
 ## Language convention
 
 All quant research artifacts are maintained in English: Python code, comments,
